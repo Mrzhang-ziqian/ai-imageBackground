@@ -85,6 +85,15 @@
                 @update:model-value="handleTemplateChange"
               />
 
+              <!-- 边缘后期工具 (G05) -->
+              <EdgeToolsPanel
+                v-if="remover.processing.status === 'done'"
+                :transparent-blob="remover.transparentBlob.value"
+                @update:result-blob="handleEdgeUpdate"
+                @reset-edge="handleEdgeReset"
+                @toast="handleDownloadToast"
+              />
+
               <!-- 下载面板 -->
               <DownloadPanel
                 v-if="remover.processing.status === 'done'"
@@ -137,6 +146,7 @@ import UploadZone from './components/UploadZone.vue';
 import PreviewGrid from './components/PreviewGrid.vue';
 import BackgroundColorPicker from './components/BackgroundColorPicker.vue';
 import BackgroundTemplatePicker from './components/BackgroundTemplatePicker.vue';
+import EdgeToolsPanel from './components/EdgeToolsPanel.vue';
 import DownloadPanel from './components/DownloadPanel.vue';
 import HistoryPanel from './components/HistoryPanel.vue';
 import BatchPanel from './components/BatchPanel.vue';
@@ -299,6 +309,16 @@ async function handleTemplateChange(templateId: string | null): Promise<void> {
   if (error) {
     showToast({ message: error, type: 'error' });
   }
+}
+
+// ---- G05: 边缘后期工具 ----
+function handleEdgeUpdate(blob: Blob): void {
+  remover.updateTransparentBlob(blob);
+}
+
+function handleEdgeReset(): void {
+  remover.resetEdgeEdits();
+  showToast({ message: '已撤销边缘修改', type: 'success' });
 }
 
 function handleReset(): void {

@@ -37,6 +37,9 @@ export function useBackgroundRemover() {
 
   let abortController: AbortController | null = null;
 
+  /** 边缘编辑前的透明 Blob 快照（用于撤销边缘修改） */
+  let preEditTransparentBlob: Blob | null = null;
+
   // ---- File Validation ----
 
   function validateFile(file: File | null): FileValidationResult {
@@ -346,6 +349,40 @@ export function useBackgroundRemover() {
     }
   }
 
+  // ---- Edge Tools Integration (G05) ----
+
+  /**
+   * 边缘工具产出的新透明 Blob：替换透明底和显示结果。
+   * 首次调用时保存原始透明 Blob 作为撤销快照。
+   */
+  function updateTransparentBlob(newBlob: Blob): void {
+    // 保存原始（仅在首次编辑时）
+    if (!preEditTransparentBlob && transparentBlob.value) {
+      preEditTransparentBlob = transparentBlob.value;
+    }
+    // 清理旧 URL
+    if (resultUrl.value) URL.revokeObjectURL(resultUrl.value);
+    transparentBlob.value = newBlob;
+    resultBlob.value = newBlob;
+    resultUrl.value = URL.createObjectURL(newBlob);
+    currentBgColor.value = 'transparent';
+    currentTemplateId.value = null;
+  }
+
+  /**
+   * 撤销所有边缘编辑：恢复到抠图完成后的原始透明底。
+   */
+  function resetEdgeEdits(): void {
+    if (!preEditTransparentBlob) return;
+    if (resultUrl.value) URL.revokeObjectURL(resultUrl.value);
+    transparentBlob.value = preEditTransparentBlob;
+    resultBlob.value = preEditTransparentBlob;
+    resultUrl.value = URL.createObjectURL(preEditTransparentBlob);
+    currentBgColor.value = 'transparent';
+    currentTemplateId.value = null;
+    preEditTransparentBlob = null;
+  }
+
   // ---- Download ----
 
   function downloadResult(): void {
@@ -436,6 +473,7 @@ export function useBackgroundRemover() {
     resultFilename.value = 'removed_bg.png';
     currentBgColor.value = 'transparent';
     currentTemplateId.value = null;
+    preEditTransparentBlob = null;
     Object.assign(processing, {
       status: 'idle' as const,
       progress: 0,
@@ -469,6 +507,8 @@ export function useBackgroundRemover() {
     abortCurrent,
     applyBackgroundColor,
     applyTemplate,
+    updateTransparentBlob,
+    resetEdgeEdits,
     downloadResult,
   };
 }
