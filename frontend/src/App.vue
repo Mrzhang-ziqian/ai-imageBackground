@@ -58,68 +58,87 @@
                     重新选择文件
                   </button>
                 </div>
+                <div class="reset-row">
+                  <button class="btn-reset" @click="handleReset">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M23 4v6h-6"/>
+                      <path d="M1 20v-6h6"/>
+                      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                    </svg>
+                    重新上传
+                  </button>
+                </div>
               </div>
 
-              <!-- 预览区 -->
-              <PreviewGrid
-                :original-url="remover.originalUrl.value"
-                :result-url="remover.resultUrl.value"
-                :bg-color="remover.currentBgColor.value"
-                :processing="remover.processing"
-                :result-dimensions="remover.resultDimensions.value"
-                :model-used="remover.modelUsed.value"
-              />
+              <!-- ========== 主体：左右两栏布局 ========== -->
+              <div v-else class="result-layout" :class="{ 'no-tools': !isDone }">
+                <!-- 左栏：预览区（粘性定位） -->
+                <div class="preview-col">
+                  <PreviewGrid
+                    :original-url="remover.originalUrl.value"
+                    :result-url="remover.resultUrl.value"
+                    :bg-color="remover.currentBgColor.value"
+                    :processing="remover.processing"
+                    :result-dimensions="remover.resultDimensions.value"
+                    :model-used="remover.modelUsed.value"
+                  />
+                </div>
 
-              <!-- 背景颜色选择器 -->
-              <BackgroundColorPicker
-                v-if="remover.processing.status === 'done'"
-                :model-value="remover.currentBgColor.value"
-                @update:model-value="handleBgColorChange"
-              />
+                <!-- 右栏：工具面板（独立滚动） -->
+                <div class="tools-col">
+                  <!-- 背景颜色选择器 -->
+                  <BackgroundColorPicker
+                    v-if="remover.processing.status === 'done'"
+                    :model-value="remover.currentBgColor.value"
+                    @update:model-value="handleBgColorChange"
+                  />
 
-              <!-- 背景模板选择器 -->
-              <BackgroundTemplatePicker
-                v-if="remover.processing.status === 'done'"
-                :model-value="remover.currentTemplateId.value"
-                :subject-blob="remover.transparentBlob.value"
-                @update:model-value="handleTemplateChange"
-              />
+                  <!-- 背景模板选择器 -->
+                  <BackgroundTemplatePicker
+                    v-if="remover.processing.status === 'done'"
+                    :model-value="remover.currentTemplateId.value"
+                    :subject-blob="remover.transparentBlob.value"
+                    @update:model-value="handleTemplateChange"
+                  />
 
-              <!-- 边缘后期工具 (G05) -->
-              <EdgeToolsPanel
-                v-if="remover.processing.status === 'done'"
-                :transparent-blob="remover.transparentBlob.value"
-                @update:result-blob="handleEdgeUpdate"
-                @reset-edge="handleEdgeReset"
-                @toast="handleDownloadToast"
-              />
+                  <!-- 边缘后期工具 (G05) -->
+                  <EdgeToolsPanel
+                    v-if="remover.processing.status === 'done'"
+                    :transparent-blob="remover.transparentBlob.value"
+                    @update:result-blob="handleEdgeUpdate"
+                    @reset-edge="handleEdgeReset"
+                    @toast="handleDownloadToast"
+                  />
 
-              <!-- 下载面板 -->
-              <DownloadPanel
-                v-if="remover.processing.status === 'done'"
-                :blob="remover.resultBlob.value"
-                :transparent-blob="remover.transparentBlob.value"
-                :filename="remover.resultFilename.value"
-                @toast="handleDownloadToast"
-              />
+                  <!-- 下载面板 -->
+                  <DownloadPanel
+                    v-if="remover.processing.status === 'done'"
+                    :blob="remover.resultBlob.value"
+                    :transparent-blob="remover.transparentBlob.value"
+                    :filename="remover.resultFilename.value"
+                    @toast="handleDownloadToast"
+                  />
 
-              <!-- 重新上传 -->
-              <div
-                v-if="remover.processing.status === 'done' || remover.processing.status === 'error'"
-                class="reset-row"
-              >
-                <button class="btn-reset" @click="handleReset">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M23 4v6h-6"/>
-                    <path d="M1 20v-6h6"/>
-                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                  </svg>
-                  重新上传
-                </button>
+                  <!-- 重新上传 -->
+                  <div
+                    v-if="remover.processing.status === 'done'"
+                    class="reset-row"
+                  >
+                    <button class="btn-reset" @click="handleReset">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 4v6h-6"/>
+                        <path d="M1 20v-6h6"/>
+                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                      </svg>
+                      重新上传
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <!-- 处理历史 -->
+              <!-- 处理历史（全宽） -->
               <HistoryPanel
+                v-if="remover.processing.status !== 'error'"
                 :entries="history.entries.value"
                 :active-id="activeHistoryId"
                 @restore="handleHistoryRestore"
@@ -168,6 +187,9 @@ const viewMode = ref<'single' | 'batch'>('single');
 
 // ---- 计算属性 ----
 const showUpload = computed(() => viewMode.value === 'single' && remover.processing.status === 'idle');
+
+/** 是否已完成处理（有结果可操作） */
+const isDone = computed(() => remover.processing.status === 'done');
 
 /** 当前活跃的历史条目 ID（用于高亮） */
 const activeHistoryId = ref<string>('');
@@ -380,9 +402,45 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
   padding-bottom: 48px;
 }
 
+/* ============================================================
+   结果区：左右两栏布局
+   ============================================================ */
+
 .result-wrapper {
   display: flex;
   flex-direction: column;
+}
+
+/* 核心两栏网格 */
+.result-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 28px;
+  align-items: start;
+}
+
+/* 左栏：预览区（粘性定位） */
+.preview-col {
+  position: sticky;
+  top: 24px;
+  min-width: 0; /* 防止内容溢出 */
+}
+
+/* 右栏：工具面板 */
+.tools-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* 处理中：右侧无需显示，预览区全宽 */
+.result-layout.no-tools {
+  grid-template-columns: 1fr;
+}
+
+.result-layout.no-tools .tools-col {
+  display: none;
 }
 
 /* ---- 错误重试卡片 ---- */
@@ -397,6 +455,8 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
   padding: 28px 24px;
   margin-bottom: 24px;
   text-align: center;
+  max-width: 520px;
+  margin-inline: auto;
 }
 
 .error-icon {
@@ -468,13 +528,14 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
 .reset-row {
   display: flex;
   justify-content: center;
-  margin-top: 8px;
 }
 
 .btn-reset {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
+  width: 100%;
   padding: 10px 22px;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
@@ -487,7 +548,7 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
 }
 
 .btn-reset:hover {
-  background: #f9fafb;
+  background: #f3f4f6;
   color: #374151;
   border-color: #d1d5db;
 }
@@ -520,6 +581,22 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
   background: #f9fafb;
   color: #374151;
   border-color: #d1d5db;
+}
+
+/* ---- 响应式：窄屏退化为单列 ---- */
+@media (max-width: 900px) {
+  .result-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .preview-col {
+    position: static;
+  }
+
+  .tools-col {
+    gap: 14px;
+  }
 }
 
 /* Section 切换动画 */

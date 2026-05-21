@@ -217,7 +217,7 @@ function formatSize(bytes: number): string {
 
 <style scoped>
 .download-section {
-  margin-bottom: 32px;
+  /* margin handled by parent */
 }
 
 .download-panel {
@@ -225,6 +225,10 @@ function formatSize(bytes: number): string {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.08);
+  padding: 18px 20px;
 }
 
 /* ---- 主下载按钮 ---- */

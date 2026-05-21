@@ -140,10 +140,9 @@ onMounted(() => {
 <style scoped>
 .template-section {
   background: #ffffff;
-  border-radius: 20px;
+  border-radius: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.08);
-  padding: 20px 24px;
-  margin-bottom: 24px;
+  padding: 18px 20px;
 }
 
 .template-header {

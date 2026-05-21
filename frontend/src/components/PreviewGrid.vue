@@ -114,7 +114,7 @@ const resultBoxStyle = computed(() => {
 
 <style scoped>
 .preview-section {
-  margin-bottom: 32px;
+  /* margin removed — handled by parent grid layout */
 }
 
 /* ---- 工具栏 ---- */

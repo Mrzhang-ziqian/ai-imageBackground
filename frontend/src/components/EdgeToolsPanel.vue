@@ -450,8 +450,7 @@ onBeforeUnmount(() => {
 .edge-panel {
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  margin-bottom: 20px;
+  border-radius: 16px;
   overflow: hidden;
 }
 
