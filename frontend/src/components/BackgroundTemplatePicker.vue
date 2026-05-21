@@ -180,7 +180,11 @@ onMounted(() => {
   margin-bottom: 14px;
   padding-bottom: 12px;
   border-bottom: 1px solid #f3f4f6;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+.category-tabs::-webkit-scrollbar { display: none; }
 
 .category-tab {
   display: flex;

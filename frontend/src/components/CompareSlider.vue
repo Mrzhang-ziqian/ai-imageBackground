@@ -193,6 +193,7 @@ onUnmounted(() => {
   color: #374151;
   pointer-events: auto;
   cursor: col-resize;
+  touch-action: none;
   transition: transform 0.15s ease;
 }
 
@@ -223,5 +224,28 @@ onUnmounted(() => {
 
 .label-result {
   right: 16px;
+}
+
+/* ---- 响应式：触屏友好 ---- */
+@media (max-width: 640px) {
+  .compare-handle {
+    width: 44px;
+    height: 44px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25);
+  }
+
+  .compare-label {
+    font-size: 11px;
+    padding: 3px 10px;
+    top: 10px;
+  }
+
+  .label-original {
+    left: 10px;
+  }
+
+  .label-result {
+    right: 10px;
+  }
 }
 </style>

@@ -26,13 +26,26 @@ defineProps<{
   top: 24px;
   left: 50%;
   transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
   padding: 12px 28px;
   border-radius: 12px;
   font-size: 14px;
   font-weight: 500;
   z-index: 1000;
   pointer-events: none;
-  white-space: nowrap;
+  text-align: center;
+  line-height: 1.4;
+}
+
+@media (max-width: 480px) {
+  .toast {
+    top: 16px;
+    padding: 10px 18px;
+    font-size: 13px;
+    border-radius: 10px;
+    white-space: normal;
+    word-break: break-word;
+  }
 }
 
 .toast.error {

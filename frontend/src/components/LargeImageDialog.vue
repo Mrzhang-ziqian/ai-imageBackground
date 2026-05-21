@@ -340,4 +340,51 @@ function handleCancel(): void {
 .dialog-fade-leave-to {
   opacity: 0;
 }
+
+/* ---- 响应式：移动端对话框 ---- */
+@media (max-width: 480px) {
+  .dialog-card {
+    width: 92vw;
+    padding: 22px 18px 18px;
+    border-radius: 16px;
+  }
+
+  .dialog-icon {
+    margin-bottom: 10px;
+  }
+
+  .dialog-icon svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  .dialog-title {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+
+  .dialog-dims {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .dim-item .dim-value {
+    font-size: 13px;
+  }
+
+  .dialog-desc {
+    font-size: 12px;
+    max-width: 100%;
+    margin-bottom: 16px;
+  }
+
+  .dialog-actions {
+    gap: 8px;
+  }
+
+  .btn-prefer, .btn-original {
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+}
 </style>

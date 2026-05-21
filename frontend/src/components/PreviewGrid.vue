@@ -192,6 +192,23 @@ const resultBoxStyle = computed(() => {
 @media (max-width: 700px) {
   .preview-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .preview-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .preview-label {
+    font-size: 12px;
+    padding: 10px 14px;
+  }
+
+  .preview-card {
+    border-radius: 14px;
   }
 }
 

@@ -696,7 +696,9 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
   border-color: #d1d5db;
 }
 
-/* ---- 响应式：窄屏退化为单列 ---- */
+/* ---- 响应式 ---- */
+
+/* 平板 & 小屏 ≤900px：两栏退化为单列 */
 @media (max-width: 900px) {
   .result-layout {
     grid-template-columns: 1fr;
@@ -709,6 +711,99 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
 
   .tools-col {
     gap: 14px;
+  }
+}
+
+/* 手机 ≤640px：间距 + 卡片紧凑化 */
+@media (max-width: 640px) {
+  .main {
+    padding-bottom: 32px;
+  }
+
+  .result-layout {
+    gap: 14px;
+  }
+
+  .tools-col {
+    gap: 10px;
+  }
+
+  .error-card {
+    padding: 20px 16px;
+    gap: 8px;
+    margin-bottom: 16px;
+    border-radius: 12px;
+  }
+
+  .error-title {
+    font-size: 15px;
+  }
+
+  .error-detail {
+    font-size: 12px;
+  }
+
+  .error-actions {
+    gap: 8px;
+  }
+
+  .btn-retry {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  .btn-new-upload {
+    padding: 8px 16px;
+    font-size: 13px;
+  }
+
+  .btn-reset {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+
+  .back-row {
+    margin-bottom: 10px;
+  }
+
+  .btn-back-mode {
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+}
+
+/* 小手机 ≤480px：极限紧凑 */
+@media (max-width: 480px) {
+  .main {
+    padding-bottom: 20px;
+  }
+
+  .result-layout {
+    gap: 10px;
+  }
+
+  .tools-col {
+    gap: 8px;
+  }
+
+  /* result-wrapper 无工具时不需要额外间距 */
+  .result-wrapper {
+    margin-top: 4px;
+  }
+
+  .error-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .btn-retry,
+  .btn-new-upload {
+    width: 100%;
+  }
+
+  /* 重新上传按钮全宽 */
+  .reset-row .btn-reset {
+    width: 100%;
   }
 }
 

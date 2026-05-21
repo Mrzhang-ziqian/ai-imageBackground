@@ -290,6 +290,7 @@ function formatSize(bytes: number): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   padding: 16px 24px;
   border-bottom: 1px solid #f3f4f6;
   gap: 12px;
@@ -535,6 +536,71 @@ function formatSize(bytes: number): string {
 
 @media (max-width: 700px) {
   .result-grid { grid-template-columns: repeat(2, 1fr); }
+  .batch-header { padding: 12px 16px; }
+  .file-list { padding: 8px 16px; }
+  .result-grid { padding: 12px 16px 16px; gap: 8px; }
+  .overall-progress-bar { padding: 0 16px 8px; }
+  .btn-download-all { padding: 8px 16px; font-size: 13px; }
+}
+
+@media (max-width: 480px) {
+  .batch-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .batch-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .btn-start, .btn-clear, .btn-cancel, .btn-back {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 12px;
+    font-size: 12px;
+    text-align: center;
+    justify-content: center;
+  }
+
+  .btn-download-all {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .file-list {
+    padding: 8px 12px;
+    max-height: 280px;
+  }
+
+  .file-row {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .file-thumb-box, .file-thumb {
+    width: 36px;
+    height: 36px;
+  }
+
+  .result-grid {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 10px 12px 12px;
+    gap: 6px;
+  }
+
+  .result-card {
+    border-radius: 10px;
+  }
+
+  .btn-download-single {
+    margin: 6px 10px 10px;
+    padding: 6px;
+    font-size: 11px;
+  }
 }
 
 .result-card {

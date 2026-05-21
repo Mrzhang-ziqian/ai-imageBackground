@@ -529,6 +529,7 @@ onBeforeUnmount(() => {
 /* ---- Tab 切换 ---- */
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 4px;
   background: #f3f4f6;
@@ -682,6 +683,7 @@ onBeforeUnmount(() => {
 /* ---- 笔刷模式 ---- */
 .brush-modes {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 .mode-btn {
@@ -797,5 +799,65 @@ onBeforeUnmount(() => {
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ---- 响应式 ---- */
+@media (max-width: 480px) {
+  .edge-panel {
+    border-radius: 12px;
+  }
+
+  .panel-header {
+    padding: 10px 14px;
+  }
+
+  .panel-header h4 {
+    font-size: 13px;
+  }
+
+  .tabs {
+    margin-bottom: 10px;
+  }
+
+  .tab-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 4px;
+    font-size: 11px;
+    gap: 3px;
+    justify-content: center;
+  }
+
+  .tab-btn .tab-icon svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tool-section {
+    gap: 8px;
+  }
+
+  .btn-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .btn-apply {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  .btn-undo {
+    font-size: 12px;
+    padding: 8px 14px;
+  }
+
+  .slider::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
 }
 </style>

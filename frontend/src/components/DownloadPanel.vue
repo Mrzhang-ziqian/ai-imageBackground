@@ -224,6 +224,7 @@ function formatSize(bytes: number): string {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 8px;
   background: #ffffff;
   border-radius: 16px;
@@ -414,6 +415,55 @@ function formatSize(bytes: number): string {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ---- 响应式 ---- */
+@media (max-width: 480px) {
+  .download-panel {
+    padding: 12px 14px;
+    border-radius: 12px;
+    gap: 6px;
+  }
+
+  .btn-download-primary {
+    padding: 10px 18px;
+    font-size: 14px;
+    border-radius: 10px;
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .btn-download-primary svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .file-size {
+    font-size: 11px;
+    padding: 1px 6px;
+  }
+
+  .btn-more {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .dropdown-menu {
+    min-width: 220px;
+    border-radius: 12px;
+    right: 0;
+    left: auto;
+    transform: none;
+  }
+
+  .item-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
 }
 
 /* ---- 下拉动画 ---- */

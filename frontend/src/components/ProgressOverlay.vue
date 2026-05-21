@@ -83,4 +83,21 @@ defineProps<{
   font-size: 13px;
   color: #6b7280;
 }
+
+/* ---- 响应式 ---- */
+@media (max-width: 480px) {
+  .progress-container {
+    width: 85%;
+    max-width: 260px;
+    padding: 20px;
+  }
+
+  .progress-text {
+    font-size: 14px;
+  }
+
+  .progress-detail {
+    font-size: 12px;
+  }
+}
 </style>

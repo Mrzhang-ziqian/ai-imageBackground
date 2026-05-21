@@ -253,4 +253,48 @@ defineEmits<{
   color: #ef4444;
   background: #fef2f2;
 }
+
+/* ---- 响应式 ---- */
+@media (max-width: 480px) {
+  .history-section {
+    padding: 14px 16px;
+  }
+
+  .history-header {
+    padding: 0 0 10px;
+  }
+
+  .history-title {
+    font-size: 13px;
+  }
+
+  .history-card {
+    width: 130px;
+    padding: 8px;
+    border-radius: 10px;
+  }
+
+  .thumb-box {
+    width: 42px;
+    height: 42px;
+    border-radius: 6px;
+  }
+
+  .card-name {
+    font-size: 11px;
+  }
+
+  .card-dims {
+    font-size: 10px;
+  }
+
+  .card-delete {
+    opacity: 1;
+    width: 18px;
+    height: 18px;
+    top: 2px;
+    right: 2px;
+    border-radius: 4px;
+  }
+}
 </style>
