@@ -57,11 +57,29 @@
               @update:model-value="handleBgColorChange"
             />
 
-            <!-- 操作按钮 -->
-            <ActionBar
-              @download="remover.downloadResult"
-              @reset="handleReset"
+            <!-- 下载面板 -->
+            <DownloadPanel
+              v-if="remover.processing.status === 'done'"
+              :blob="remover.resultBlob.value"
+              :transparent-blob="remover.transparentBlob.value"
+              :filename="remover.resultFilename.value"
+              @toast="handleDownloadToast"
             />
+
+            <!-- 重新上传 -->
+            <div
+              v-if="remover.processing.status === 'done' || remover.processing.status === 'error'"
+              class="reset-row"
+            >
+              <button class="btn-reset" @click="handleReset">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M23 4v6h-6"/>
+                  <path d="M1 20v-6h6"/>
+                  <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+                重新上传
+              </button>
+            </div>
           </div>
         </Transition>
       </div>
@@ -80,7 +98,7 @@ import ToastMessage from './components/ToastMessage.vue';
 import UploadZone from './components/UploadZone.vue';
 import PreviewGrid from './components/PreviewGrid.vue';
 import BackgroundColorPicker from './components/BackgroundColorPicker.vue';
-import ActionBar from './components/ActionBar.vue';
+import DownloadPanel from './components/DownloadPanel.vue';
 import { useBackgroundRemover } from './composables/useBackgroundRemover';
 import { useToast } from './composables/useToast';
 import type { BgColor } from './types';
@@ -116,6 +134,10 @@ function handleRetry(): void {
 
 function handleValidationError(error: string): void {
   showToast({ message: error, type: 'error' });
+}
+
+function handleDownloadToast(payload: { message: string; type: 'success' | 'error' }): void {
+  showToast(payload);
 }
 
 async function handleBgColorChange(color: BgColor): Promise<void> {
@@ -246,6 +268,39 @@ function onPaste(event: ClipboardEvent): void {
 .btn-new-upload:hover {
   background: #f9fafb;
   border-color: #9ca3af;
+}
+
+/* ---- 重新上传按钮 ---- */
+.reset-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.btn-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-reset:hover {
+  background: #f9fafb;
+  color: #374151;
+  border-color: #d1d5db;
+}
+
+.btn-reset svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* Section 切换动画 */

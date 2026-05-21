@@ -362,6 +362,7 @@ export function useBackgroundRemover() {
     currentFile: readonly(currentFile),
     originalUrl: readonly(originalUrl),
     resultBlob: readonly(resultBlob),
+    transparentBlob: readonly(transparentBlob),
     resultUrl: readonly(resultUrl),
     resultFilename: readonly(resultFilename),
     resultDimensions: readonly(resultDimensions),
