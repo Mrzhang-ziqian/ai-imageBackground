@@ -46,9 +46,9 @@ PROCESS_MAX_DIM = 1024  # AI 处理时缩放到的最大边长（大幅提速）
 # 延迟加载模型 session，首次请求时初始化
 # 模型降级链路：u2net（质量最高）→ u2netp（轻量）→ silueta（兜底）
 _MODELS = [
-    {"name": "u2net",  "label": "U²-Net (标准)"},
-    {"name": "u2netp", "label": "U²-Net (轻量)"},
-    {"name": "silueta", "label": "Silueta (备选)"},
+    {"name": "u2net",  "label": "U2-Net (Standard)",  "key": "u2net"},
+    {"name": "u2netp", "label": "U2-Net (Light)",     "key": "u2netp"},
+    {"name": "silueta", "label": "Silueta (Fallback)", "key": "silueta"},
 ]
 
 _sessions: dict[str, object] = {}
@@ -143,11 +143,21 @@ async def health_check():
 # ---------- 全局异常处理 ----------
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """捕获所有未处理异常，输出完整堆栈"""
-    logger.error(f"未捕获异常: {exc}\n{traceback.format_exc()}")
+    """捕获所有未处理异常，输出完整堆栈并返回 JSON 错误"""
+    logger.error(f"未捕获异常 [{request.method} {request.url.path}]: {exc}\n{traceback.format_exc()}")
     return JSONResponse(
         status_code=500,
-        content={"detail": str(exc)},
+        content={"detail": f"服务器内部错误: {exc}", "type": type(exc).__name__},
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc: HTTPException):
+    """确保 HTTPException 也输出到日志"""
+    logger.warning(f"HTTP {exc.status_code} [{request.method} {request.url.path}]: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": str(exc.detail), "type": "HTTPException"},
     )
 
 

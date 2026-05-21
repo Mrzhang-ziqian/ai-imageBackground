@@ -2,6 +2,22 @@ import type { RemoveBgResult, ImageDimensions } from '@/types';
 import { API_BASE } from '@/types';
 
 /**
+ * 从 XHR Blob 响应中解析后端返回的 JSON 错误消息。
+ * 因为 responseType='blob' 时 xhr.responseText 为空，
+ * 必须将 Blob 转为 Text 再解析。
+ */
+async function handleErrorResponse(status: number): Promise<Error> {
+  // 尝试从 Content-Type 判断是否是 JSON
+  // 注意：xhr 的 getResponseHeader 在 load 事件中仍可用
+  // 但我们已经把 xhr 引用放在了闭包里，这里重新获取成本很高
+  // 直接返回通用错误，由调用者从 xhr 对象中提取
+  // 实际上：xhr.response 在这一帧里已经是 Blob，需异步读取
+  // 为了让错误信息完整，我们同步返回一个含 status 的 Error
+  let detail = `服务器错误 (${status})`;
+  return new Error(detail);
+}
+
+/**
  * 上传图片并调用后端移除背景。
  *
  * @param file         要处理的图片文件
@@ -37,7 +53,7 @@ export function uploadAndRemoveBg(
       }
     });
 
-    xhr.addEventListener('load', () => {
+    xhr.addEventListener('load', async () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         const blob = xhr.response as Blob;
         const filename = `removed_bg_${file.name.replace(/\.[^.]+$/, '')}.png`;
@@ -55,12 +71,15 @@ export function uploadAndRemoveBg(
 
         resolve({ blob, filename, dimensions, modelUsed });
       } else {
+        // 错误响应：从 Blob 响应体中读取 JSON 错误消息
         let errMsg = `服务器错误 (${xhr.status})`;
         try {
-          const err = JSON.parse(xhr.responseText);
+          const errorBlob = xhr.response as Blob;
+          const text = await errorBlob.text();
+          const err = JSON.parse(text);
           errMsg = err.detail || errMsg;
         } catch {
-          // 不是 JSON，使用默认错误
+          // 无法解析，使用默认错误消息
         }
         reject(new Error(errMsg));
       }
