@@ -201,10 +201,12 @@ function morphErode(
 export type BrushMode = 'erase' | 'restore';
 
 export interface BrushInitOptions {
-  /** 透明 PNG Blob */
+  /** 透明 PNG Blob（AI 抠图结果） */
   blob: Blob;
   /** 目标 Canvas 元素 */
   canvas: HTMLCanvasElement;
+  /** 原始图片 URL/Blob（用于从原图恢复被 AI 误删的像素） */
+  originalUrl?: string;
 }
 
 /** 画笔编辑器实例 */
@@ -232,9 +234,9 @@ export interface BrushEditor {
  * 使用 Canvas composite 操作实现高性能画笔。
  */
 export async function createBrushEditor(options: BrushInitOptions): Promise<BrushEditor> {
-  const { blob, canvas } = options;
+  const { blob, canvas, originalUrl } = options;
 
-  // 加载图片
+  // 加载处理后的透明图片
   const img = await blobToImage(blob);
 
   // 设置 Canvas 尺寸
@@ -245,14 +247,38 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
   // 绘制棋盘格背景（显示透明度）
   drawCheckerboard(ctx, canvas.width, canvas.height);
 
-  // 保存原始图片数据（用于恢复画笔）
-  const originalCanvas = document.createElement('canvas');
-  originalCanvas.width = canvas.width;
-  originalCanvas.height = canvas.height;
-  const origCtx = originalCanvas.getContext('2d')!;
-  origCtx.drawImage(img, 0, 0);
+  // 保存处理后的透明图片（用于非恢复区域的 RGB 和初始状态还原）
+  const processedCanvas = document.createElement('canvas');
+  processedCanvas.width = canvas.width;
+  processedCanvas.height = canvas.height;
+  const processedCtx = processedCanvas.getContext('2d')!;
+  processedCtx.drawImage(img, 0, 0);
 
-  // 在主 Canvas 上绘制图片
+  // 加载原始图片（用于"从原图恢复"获取原始像素）
+  let originalPhotoCanvas: HTMLCanvasElement | null = null;
+  let originalPhotoCtx: CanvasRenderingContext2D | null = null;
+  if (originalUrl) {
+    try {
+      const origImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.crossOrigin = 'anonymous';
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('原图加载失败'));
+        el.src = originalUrl;
+      });
+      // 缩放原图到处理结果的尺寸（如果尺寸不同）
+      originalPhotoCanvas = document.createElement('canvas');
+      originalPhotoCanvas.width = canvas.width;
+      originalPhotoCanvas.height = canvas.height;
+      originalPhotoCtx = originalPhotoCanvas.getContext('2d')!;
+      originalPhotoCtx.drawImage(origImg, 0, 0, canvas.width, canvas.height);
+    } catch {
+      // 原图加载失败，回退：恢复模式退化为撤销笔触
+      console.warn('原图加载失败，"从原图恢复"功能将退化为笔触撤销');
+    }
+  }
+
+  // 在主 Canvas 上绘制处理后的图片
   ctx.drawImage(img, 0, 0);
 
   // 撤销栈：存储 ImageData 快照
@@ -284,8 +310,7 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
       ctx.arc(x, y, half, 0, Math.PI * 2);
       ctx.fill();
     } else {
-      // 恢复：从原始图片恢复画笔区域的像素
-      // 先清除画笔区域，再从原始图片绘制
+      // 恢复：先清除区域，再从原始图片恢复像素
       ctx.globalCompositeOperation = 'destination-out';
       ctx.beginPath();
       ctx.arc(x, y, half, 0, Math.PI * 2);
@@ -295,7 +320,14 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
       ctx.beginPath();
       ctx.arc(x, y, half, 0, Math.PI * 2);
       ctx.clip();
-      ctx.drawImage(originalCanvas, 0, 0);
+
+      if (originalPhotoCanvas) {
+        // 从原始照片恢复像素（抢回被 AI 误删的内容）
+        ctx.drawImage(originalPhotoCanvas, 0, 0);
+      } else {
+        // 无原图时退化为撤销笔触（从处理后的图片恢复）
+        ctx.drawImage(processedCanvas, 0, 0);
+      }
     }
 
     ctx.restore();
@@ -306,7 +338,6 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
     const snap = undoStack.pop();
     if (!snap) return false;
     ctx.putImageData(snap, 0, 0);
-    // 棋盘格可能被覆盖，重新绘制最底层
     return true;
   }
 
@@ -315,35 +346,52 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
     undoStack.length = 0;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawCheckerboard(ctx, canvas.width, canvas.height);
-    ctx.drawImage(originalCanvas, 0, 0);
+    ctx.drawImage(processedCanvas, 0, 0);
   }
 
   /** 获取当前编辑结果 Blob */
   async function getBlob(): Promise<Blob> {
-    // 创建临时 Canvas 导出（不含棋盘格背景）
+    // 从主 Canvas 直接读取像素——恢复区域已有原始照片 RGB，处理区域有 AI 结果 RGB
+    const mainData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const processedData = processedCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+    const merged = new Uint8ClampedArray(mainData.data.length);
+    for (let i = 0; i < mainData.data.length; i += 4) {
+      const alpha = mainData.data[i + 3];
+      if (alpha > 0) {
+        // 可见像素：主 Canvas 的 RGB 已经在恢复区域包含原图像素
+        // 但要过滤棋盘格灰度混入——用处理图片的 RGB 作为基准
+        // 如果主 Canvas 的 RGB 与处理图片 RGB 差异大，说明是恢复区域（原始照片像素），保留主 Canvas RGB
+        const dr = Math.abs(mainData.data[i] - processedData.data[i]);
+        const dg = Math.abs(mainData.data[i + 1] - processedData.data[i + 1]);
+        const db = Math.abs(mainData.data[i + 2] - processedData.data[i + 2]);
+        const isRestored = (dr + dg + db) > 30; // 色差阈值：恢复区域 RGB 差异大
+
+        if (isRestored) {
+          // 恢复区域：使用主 Canvas RGB（来自原图）
+          merged[i] = mainData.data[i];
+          merged[i + 1] = mainData.data[i + 1];
+          merged[i + 2] = mainData.data[i + 2];
+        } else {
+          // 非恢复区域：使用处理图片 RGB（避免棋盘格混色）
+          merged[i] = processedData.data[i];
+          merged[i + 1] = processedData.data[i + 1];
+          merged[i + 2] = processedData.data[i + 2];
+        }
+        merged[i + 3] = alpha;
+      } else {
+        // 透明区域
+        merged[i] = 0;
+        merged[i + 1] = 0;
+        merged[i + 2] = 0;
+        merged[i + 3] = 0;
+      }
+    }
+
     const tmp = document.createElement('canvas');
     tmp.width = canvas.width;
     tmp.height = canvas.height;
     const tmpCtx = tmp.getContext('2d')!;
-
-    // 获取主 Canvas 的当前内容
-    const mainData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    // 恢复棋盘格覆盖的 alpha（棋盘格本身设置了 alpha，需要修正）
-    // 实际上 destination-out 不会影响棋盘格像素，因为 destination-out
-    // 只对已存在的像素起作用。但棋盘格灰度可能混入。
-    // 更安全的做法：从 originalCanvas 获取 RGB，从 mainCanvas 获取 alpha
-
-    const origData = origCtx.getImageData(0, 0, canvas.width, canvas.height);
-
-    // 合并：orig 的 RGB + main 的 alpha
-    const merged = new Uint8ClampedArray(mainData.data.length);
-    for (let i = 0; i < mainData.data.length; i += 4) {
-      merged[i] = origData.data[i];       // R
-      merged[i + 1] = origData.data[i + 1]; // G
-      merged[i + 2] = origData.data[i + 2]; // B
-      merged[i + 3] = mainData.data[i + 3]; // A (从编辑后的 main canvas)
-    }
-
     tmpCtx.putImageData(new ImageData(merged, canvas.width, canvas.height), 0, 0);
     return canvasToBlob(tmp);
   }

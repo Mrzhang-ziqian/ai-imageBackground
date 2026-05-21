@@ -105,6 +105,7 @@
                   <EdgeToolsPanel
                     v-if="remover.processing.status === 'done'"
                     :transparent-blob="remover.transparentBlob.value"
+                    :original-url="remover.originalUrl.value"
                     @update:result-blob="handleEdgeUpdate"
                     @reset-edge="handleEdgeReset"
                     @toast="handleDownloadToast"

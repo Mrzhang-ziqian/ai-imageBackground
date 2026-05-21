@@ -140,9 +140,16 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
               </svg>
-              恢复
+              <span v-if="props.originalUrl">从原图恢复</span>
+              <span v-else>恢复</span>
             </button>
           </div>
+
+          <!-- 原图参考叠加层开关（仅当有原图时显示） -->
+          <label v-if="props.originalUrl" class="overlay-toggle">
+            <input type="checkbox" v-model="showOriginalOverlay" />
+            <span class="toggle-label">显示原图参考</span>
+          </label>
 
           <!-- 笔刷大小 -->
           <div class="slider-row">
@@ -172,6 +179,13 @@
               @pointerup="onPointerUp"
               @pointerleave="onPointerUp"
               @pointercancel="onPointerUp"
+            />
+            <!-- 原图参考叠加层 -->
+            <img
+              v-if="showOriginalOverlay && props.originalUrl"
+              :src="props.originalUrl"
+              class="original-overlay"
+              alt="原图参考"
             />
             <!-- 画笔预览圆圈 -->
             <div
@@ -225,6 +239,8 @@ import type { BrushEditor, BrushMode } from '../composables/useEdgeTools';
 
 const props = defineProps<{
   transparentBlob: Blob | null;
+  /** 原始图片 URL，用于"从原图恢复"画笔模式 */
+  originalUrl?: string;
 }>();
 
 const emit = defineEmits<{
@@ -255,6 +271,7 @@ const brushEditor = shallowRef<BrushEditor | null>(null);
 const canvasReady = ref(false);
 const isDrawing = ref(false);
 const cursorPos = ref({ x: -100, y: -100 });
+const showOriginalOverlay = ref(false);
 
 // Tab 配置
 const tabs = [
@@ -360,6 +377,7 @@ async function initBrush(): Promise<void> {
     const editor = await createBrushEditor({
       blob: props.transparentBlob,
       canvas,
+      originalUrl: props.originalUrl,
     });
     brushEditor.value = editor;
     canvasReady.value = true;
@@ -737,6 +755,40 @@ onBeforeUnmount(() => {
 
 .brush-actions {
   flex-wrap: wrap;
+}
+
+/* ---- 原图参考叠加层 ---- */
+.overlay-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #6b7280;
+  user-select: none;
+}
+.overlay-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #6366f1;
+  cursor: pointer;
+  margin: 0;
+}
+.toggle-label {
+  font-size: 12px;
+}
+
+.original-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 2;
+  mix-blend-mode: normal;
 }
 
 /* ---- 旋转动画 ---- */
