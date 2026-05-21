@@ -80,6 +80,15 @@
                 重新上传
               </button>
             </div>
+
+            <!-- 处理历史 -->
+            <HistoryPanel
+              :entries="history.entries.value"
+              :active-id="activeHistoryId"
+              @restore="handleHistoryRestore"
+              @remove="history.remove"
+              @clear="history.clearAll"
+            />
           </div>
         </Transition>
       </div>
@@ -91,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import ToastMessage from './components/ToastMessage.vue';
@@ -99,27 +108,56 @@ import UploadZone from './components/UploadZone.vue';
 import PreviewGrid from './components/PreviewGrid.vue';
 import BackgroundColorPicker from './components/BackgroundColorPicker.vue';
 import DownloadPanel from './components/DownloadPanel.vue';
+import HistoryPanel from './components/HistoryPanel.vue';
 import { useBackgroundRemover } from './composables/useBackgroundRemover';
+import { useHistory } from './composables/useHistory';
 import { useToast } from './composables/useToast';
-import type { BgColor } from './types';
+import type { BgColor, HistoryEntry } from './types';
 
 // ---- 组合式函数 ----
 const remover = useBackgroundRemover();
+const history = useHistory();
 const { toast: toastState, showToast } = useToast();
 
 // ---- 计算属性 ----
 const showUpload = computed(() => remover.processing.status === 'idle');
 
+/** 当前活跃的历史条目 ID（用于高亮） */
+const activeHistoryId = ref<string>('');
+
 // ---- 事件处理 ----
 
-function handleFileSelected(file: File): void {
-  remover.processImage(file).then((error) => {
-    if (error) {
-      showToast({ message: error, type: 'error' });
-    } else if (remover.processing.status === 'done') {
-      showToast({ message: '背景移除成功！', type: 'success' });
-    }
+async function handleFileSelected(file: File): Promise<void> {
+  const error = await remover.processImage(file);
+  if (error) {
+    showToast({ message: error, type: 'error' });
+    return;
+  }
+  if (remover.processing.status === 'done') {
+    showToast({ message: '背景移除成功！', type: 'success' });
+    // 保存到处理历史
+    await saveToHistory(file);
+  }
+}
+
+/** 保存当前结果到历史 */
+async function saveToHistory(originalFile: File): Promise<void> {
+  const tBlob = remover.transparentBlob.value;
+  const dims = remover.resultDimensions.value;
+  if (!tBlob || !dims) return;
+
+  await history.add({
+    filename: originalFile.name,
+    originalBlob: originalFile,
+    resultBlob: tBlob,
+    dimensions: dims,
+    modelUsed: remover.modelUsed.value || '',
   });
+
+  // 设置活跃 ID（第一条即为刚添加的）
+  if (history.entries.value.length > 0) {
+    activeHistoryId.value = history.entries.value[0].id;
+  }
 }
 
 function handleRetry(): void {
@@ -149,10 +187,23 @@ async function handleBgColorChange(color: BgColor): Promise<void> {
 
 function handleReset(): void {
   remover.reset();
+  activeHistoryId.value = '';
+}
+
+function handleHistoryRestore(entry: HistoryEntry): void {
+  remover.restoreFromHistory({
+    originalDataUrl: entry.originalThumb,
+    resultDataUrl: entry.resultDataUrl,
+    filename: entry.filename,
+    dimensions: entry.dimensions,
+    modelUsed: entry.modelUsed,
+  });
+  activeHistoryId.value = entry.id;
+  showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
 }
 
 // ---- 全局粘贴上传 ----
-function onPaste(event: ClipboardEvent): void {
+async function onPaste(event: ClipboardEvent): Promise<void> {
   const items = event.clipboardData?.items;
   if (!items) return;
 
@@ -167,7 +218,13 @@ function onPaste(event: ClipboardEvent): void {
         showToast({ message: validation.error, type: 'error' });
         return;
       }
-      handleFileSelected(file);
+      const error = await remover.processImage(file);
+      if (error) {
+        showToast({ message: error, type: 'error' });
+      } else if (remover.processing.status === 'done') {
+        showToast({ message: '背景移除成功！', type: 'success' });
+        await saveToHistory(file);
+      }
       break;
     }
   }

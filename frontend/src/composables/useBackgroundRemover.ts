@@ -316,6 +316,47 @@ export function useBackgroundRemover() {
     URL.revokeObjectURL(url);
   }
 
+  /**
+   * 从历史记录恢复：直接用 data URL 设置结果，跳过上传/处理流程。
+   */
+  function restoreFromHistory(params: {
+    originalDataUrl: string;
+    resultDataUrl: string;
+    filename: string;
+    dimensions: ImageDimensions;
+    modelUsed: string;
+  }): void {
+    abortCurrent();
+    revokeAllUrls();
+
+    // 从 data URL 构建 Blob
+    const dataUrlToBlob = (dataUrl: string): Blob => {
+      const [header, b64] = dataUrl.split(',');
+      const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png';
+      const binary = atob(b64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    };
+
+    const resultBlobData = dataUrlToBlob(params.resultDataUrl);
+    transparentBlob.value = resultBlobData;
+    resultBlob.value = resultBlobData;
+    resultUrl.value = URL.createObjectURL(resultBlobData);
+    originalUrl.value = params.originalDataUrl;
+    resultFilename.value = params.filename;
+    resultDimensions.value = params.dimensions;
+    modelUsed.value = params.modelUsed;
+    currentBgColor.value = 'transparent';
+
+    Object.assign(processing, {
+      status: 'done' as const,
+      progress: 100,
+      message: '已恢复',
+      detail: '',
+    });
+  }
+
   // ---- Cleanup ----
 
   function abortCurrent(): void {
@@ -374,6 +415,7 @@ export function useBackgroundRemover() {
     validateFile,
     processImage,
     retryCurrentFile,
+    restoreFromHistory,
     reset,
     abortCurrent,
     applyBackgroundColor,

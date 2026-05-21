@@ -71,3 +71,22 @@ export interface RemoveBgResult {
   /** AI 处理所用的模型名称（来自后端 X-Model-Used 响应头） */
   modelUsed?: string;
 }
+
+/** 处理历史记录项 */
+export interface HistoryEntry {
+  id: string;
+  filename: string;
+  timestamp: number;
+  /** 原图缩略图 (base64 data URL, JPEG 压缩) */
+  originalThumb: string;
+  /** 结果缩略图 (base64 data URL, PNG) */
+  resultThumb: string;
+  /** 透明结果大图 (base64 data URL, PNG) — 用于恢复 */
+  resultDataUrl: string;
+  dimensions: ImageDimensions;
+  modelUsed: string;
+}
+
+/** 处理历史的 localStorage key */
+export const HISTORY_KEY = 'ai-bg-remover-history';
+export const MAX_HISTORY = 20;
