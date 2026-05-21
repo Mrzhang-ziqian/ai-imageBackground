@@ -6,7 +6,7 @@
 
 - **前端**: Vue 3 + TypeScript + Vite (组件化架构)
 - **后端**: Python + FastAPI
-- **AI 模型**: rembg (U2-Net)
+- **AI 模型**: rembg (U2-Net) + 多模型降级 (u2net → u2netp → silueta)
 
 ## 快速开始
 
@@ -70,6 +70,7 @@ npm run dev
 │       │   ├── AppHeader.vue
 │       │   ├── UploadZone.vue
 │       │   ├── PreviewGrid.vue
+│       │   ├── CompareSlider.vue
 │       │   ├── ProgressOverlay.vue
 │       │   ├── BackgroundColorPicker.vue
 │       │   ├── ActionBar.vue
@@ -78,7 +79,8 @@ npm run dev
 │       └── styles/
 │           └── main.css
 ├── docs/
-│   └── plan.md              # 需求文档
+│   ├── plan.md              # 需求文档
+│   └── product-gaps.md      # 产品差距分析
 └── README.md
 ```
 
@@ -90,3 +92,4 @@ npm run dev
 | `/health` | GET | 健康检查 |
 
 启动后可访问 http://localhost:8000/docs 查看 Swagger 文档。
+
