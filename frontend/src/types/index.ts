@@ -8,10 +8,33 @@ export const MAX_FILE_SIZE = 20 * 1024 * 1024;
 /** 后端 API 地址 */
 export const API_BASE = 'http://localhost:8000';
 
-/** 预设背景色选项 */
-export const PRESET_COLORS = ['transparent', '#3B82F6', '#EF4444', '#FFFFFF'] as const;
-export type PresetColor = (typeof PRESET_COLORS)[number];
+/** 预设背景色选项（带标签） */
+export interface ColorPreset {
+  hex: string;
+  label: string;
+}
+
+export const PRESET_COLORS: readonly ColorPreset[] = [
+  { hex: 'transparent', label: '透明' },
+  { hex: '#FFFFFF', label: '纯白' },
+  { hex: '#F3F4F6', label: '浅灰' },
+  { hex: '#D1D5DB', label: '中灰' },
+  { hex: '#1F2937', label: '深黑' },
+  { hex: '#F5F0E8', label: '米色' },
+  { hex: '#3B82F6', label: '蓝色' },
+  { hex: '#10B981', label: '绿色' },
+  { hex: '#F59E0B', label: '金黄' },
+  { hex: '#EF4444', label: '红色' },
+  { hex: '#EC4899', label: '粉色' },
+  { hex: '#8B5CF6', label: '紫色' },
+] as const;
+
+export type PresetColor = (typeof PRESET_COLORS)[number]['hex'];
 export type BgColor = PresetColor | `#${string}`;
+
+/** 最近使用颜色的 localStorage key */
+export const RECENT_COLORS_KEY = 'ai-bg-remover-recent-colors';
+export const MAX_RECENT_COLORS = 8;
 
 /** 处理状态 */
 export interface ProcessingState {
