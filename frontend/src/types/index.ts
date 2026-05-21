@@ -1,5 +1,47 @@
 /** 支持的图片 MIME 类型 */
 export const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+
+// ============================================================
+// G08: 批量处理
+// ============================================================
+
+/** 批量队列中单个文件的状态 */
+export type BatchItemStatus = 'queued' | 'uploading' | 'processing' | 'done' | 'error';
+
+/** 批量处理的单个文件项 */
+export interface BatchItem {
+  /** 唯一 ID */
+  id: string;
+  /** 原始文件 */
+  file: File;
+  /** 原图 Object URL */
+  originalUrl: string;
+  /** 处理状态 */
+  status: BatchItemStatus;
+  /** 当前进度 0-100 */
+  progress: number;
+  /** 状态描述文本 */
+  message: string;
+  /** 透明底结果 Blob（处理完成后） */
+  resultBlob: Blob | null;
+  /** 结果文件名 */
+  resultFilename: string;
+  /** 结果尺寸 */
+  dimensions: ImageDimensions | null;
+  /** 使用的 AI 模型 */
+  modelUsed: string;
+  /** 错误信息（status === 'error' 时） */
+  error: string | null;
+}
+
+/** 批量处理的整体阶段 */
+export type BatchPhase = 'entry' | 'processing' | 'done';
+
+/** 批量下载任务 */
+export interface BatchDownloadTask {
+  blob: Blob;
+  filename: string;
+}
 export type AllowedType = (typeof ALLOWED_TYPES)[number];
 
 /** 最大上传文件大小 20MB */
@@ -28,6 +70,48 @@ export const PRESET_COLORS: readonly ColorPreset[] = [
   { hex: '#EC4899', label: '粉色' },
   { hex: '#8B5CF6', label: '紫色' },
 ] as const;
+
+// ============================================================
+// G08: 批量处理
+// ============================================================
+
+/** 批量队列中单个文件的状态 */
+export type BatchItemStatus = 'queued' | 'uploading' | 'processing' | 'done' | 'error';
+
+/** 批量处理的单个文件项 */
+export interface BatchItem {
+  /** 唯一 ID */
+  id: string;
+  /** 原始文件 */
+  file: File;
+  /** 原图 Object URL */
+  originalUrl: string;
+  /** 处理状态 */
+  status: BatchItemStatus;
+  /** 当前进度 0-100 */
+  progress: number;
+  /** 状态描述文本 */
+  message: string;
+  /** 透明底结果 Blob（处理完成后） */
+  resultBlob: Blob | null;
+  /** 结果文件名 */
+  resultFilename: string;
+  /** 结果尺寸 */
+  dimensions: ImageDimensions | null;
+  /** 使用的 AI 模型 */
+  modelUsed: string;
+  /** 错误信息（status === 'error' 时） */
+  error: string | null;
+}
+
+/** 批量处理的整体阶段 */
+export type BatchPhase = 'entry' | 'processing' | 'done';
+
+/** 批量下载任务 */
+export interface BatchDownloadTask {
+  blob: Blob;
+  filename: string;
+}
 
 export type PresetColor = (typeof PRESET_COLORS)[number]['hex'];
 export type BgColor = PresetColor | `#${string}`;
@@ -244,3 +328,81 @@ export const BACKGROUND_TEMPLATES: BackgroundTemplate[] = [
     shadow: { blur: 30, offsetX: 0, offsetY: 12, color: 'rgba(0,0,0,0.12)' },
   },
 ] as const;
+
+// ============================================================
+// G08: 批量处理
+// ============================================================
+
+/** 批量队列中单个文件的状态 */
+export type BatchItemStatus = 'queued' | 'uploading' | 'processing' | 'done' | 'error';
+
+/** 批量处理的单个文件项 */
+export interface BatchItem {
+  /** 唯一 ID */
+  id: string;
+  /** 原始文件 */
+  file: File;
+  /** 原图 Object URL */
+  originalUrl: string;
+  /** 处理状态 */
+  status: BatchItemStatus;
+  /** 当前进度 0-100 */
+  progress: number;
+  /** 状态描述文本 */
+  message: string;
+  /** 透明底结果 Blob（处理完成后） */
+  resultBlob: Blob | null;
+  /** 结果文件名 */
+  resultFilename: string;
+  /** 结果尺寸 */
+  dimensions: ImageDimensions | null;
+  /** 使用的 AI 模型 */
+  modelUsed: string;
+  /** 错误信息（status === 'error' 时） */
+  error: string | null;
+}
+
+/** 批量处理的整体阶段 */
+export type BatchPhase = 'entry' | 'processing' | 'done';
+
+// ============================================================
+// G08: 批量处理
+// ============================================================
+
+/** 批量队列中单个文件的状态 */
+export type BatchItemStatus = 'queued' | 'uploading' | 'processing' | 'done' | 'error';
+
+/** 批量处理的单个文件项 */
+export interface BatchItem {
+  /** 唯一 ID */
+  id: string;
+  /** 原始文件 */
+  file: File;
+  /** 原图 Object URL */
+  originalUrl: string;
+  /** 处理状态 */
+  status: BatchItemStatus;
+  /** 当前进度 0-100 */
+  progress: number;
+  /** 状态描述文本 */
+  message: string;
+  /** 透明底结果 Blob（处理完成后） */
+  resultBlob: Blob | null;
+  /** 结果文件名 */
+  resultFilename: string;
+  /** 结果尺寸 */
+  dimensions: ImageDimensions | null;
+  /** 使用的 AI 模型 */
+  modelUsed: string;
+  /** 错误信息（status === 'error' 时） */
+  error: string | null;
+}
+
+/** 批量处理的整体阶段 */
+export type BatchPhase = 'entry' | 'processing' | 'done';
+
+/** 批量下载任务 */
+export interface BatchDownloadTask {
+  blob: Blob;
+  filename: string;
+}

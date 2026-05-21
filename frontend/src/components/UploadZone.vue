@@ -12,6 +12,7 @@
         ref="fileInputRef"
         type="file"
         accept="image/png,image/jpeg,image/webp"
+        multiple
         hidden
         @change="onFileChange"
       />
@@ -35,6 +36,7 @@ import type { FileValidationResult } from '@/types';
 
 const emit = defineEmits<{
   (e: 'file-selected', file: File): void;
+  (e: 'files-selected', files: File[]): void;
   (e: 'validation-error', error: string): void;
 }>();
 
@@ -51,8 +53,7 @@ function openFilePicker(): void {
 
 function onFileChange(event: Event): void {
   const input = event.target as HTMLInputElement;
-  const file = input.files?.[0] ?? null;
-  handleFile(file);
+  handleFiles(input.files);
   // 重置 input 以允许重复选择同一文件
   if (input) input.value = '';
 }
@@ -67,17 +68,32 @@ function onDragLeave(): void {
 
 function onDrop(event: DragEvent): void {
   isDragOver.value = false;
-  const file = event.dataTransfer?.files?.[0] ?? null;
-  handleFile(file);
+  handleFiles(event.dataTransfer?.files ?? null);
 }
 
-function handleFile(file: File | null): void {
-  const validation = props.validateFile(file);
-  if (!validation.valid) {
-    emit('validation-error', validation.error);
-    return;
+function handleFiles(fileList: FileList | null): void {
+  if (!fileList || fileList.length === 0) return;
+
+  // 过滤出有效的图片文件
+  const validFiles: File[] = [];
+  for (let i = 0; i < fileList.length; i++) {
+    const file = fileList[i];
+    const validation = props.validateFile(file);
+    if (validation.valid) {
+      validFiles.push(file);
+    } else {
+      emit('validation-error', `${file.name}: ${validation.error}`);
+    }
   }
-  emit('file-selected', file!);
+
+  if (validFiles.length === 0) return;
+
+  // 单文件 → 走原有单图流程；多文件 → 走批量流程
+  if (validFiles.length === 1) {
+    emit('file-selected', validFiles[0]);
+  } else {
+    emit('files-selected', validFiles);
+  }
 }
 
 // 全局拖拽：阻止浏览器默认打开文件
