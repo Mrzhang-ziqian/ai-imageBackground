@@ -1,0 +1,90 @@
+import type { RemoveBgResult, ImageDimensions } from '@/types';
+import { API_BASE } from '@/types';
+
+/**
+ * 上传图片并调用后端移除背景。
+ *
+ * @param file         要处理的图片文件
+ * @param onProgress   上传进度回调 (百分比 0-25, 已上传字节, 总字节)
+ * @param onPhaseChange 阶段变更回调：'uploading' -> 'processing'
+ * @param signal       可选的 AbortSignal，用于取消请求
+ * @returns 返回去背景后的 Blob 及推荐文件名
+ */
+export function uploadAndRemoveBg(
+  file: File,
+  onProgress: (percent: number, loaded: number, total: number) => void,
+  onPhaseChange: (phase: 'uploading' | 'processing') => void,
+  signal?: AbortSignal,
+): Promise<RemoveBgResult> {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+
+    // 上传进度（占总进度 0-25%）
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 25);
+        onProgress(pct, e.loaded, e.total);
+      }
+    });
+
+    // 服务器开始响应头部 = 上传完成，进入 AI 处理阶段
+    xhr.addEventListener('readystatechange', () => {
+      if (xhr.readyState === XMLHttpRequest.HEADERS_RECEIVED) {
+        onPhaseChange('processing');
+      }
+    });
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const blob = xhr.response as Blob;
+        const filename = `removed_bg_${file.name.replace(/\.[^.]+$/, '')}.png`;
+
+        // 从响应头提取结果图片的真实尺寸
+        let dimensions: ImageDimensions | undefined;
+        const w = xhr.getResponseHeader('X-Image-Width');
+        const h = xhr.getResponseHeader('X-Image-Height');
+        if (w && h) {
+          dimensions = { width: parseInt(w, 10), height: parseInt(h, 10) };
+        }
+
+        // 从响应头提取使用的 AI 模型
+        const modelUsed = xhr.getResponseHeader('X-Model-Used') || undefined;
+
+        resolve({ blob, filename, dimensions, modelUsed });
+      } else {
+        let errMsg = `服务器错误 (${xhr.status})`;
+        try {
+          const err = JSON.parse(xhr.responseText);
+          errMsg = err.detail || errMsg;
+        } catch {
+          // 不是 JSON，使用默认错误
+        }
+        reject(new Error(errMsg));
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      // 如果因 abort 触发，忽略（abort handler 已 reject）
+      if (signal?.aborted) return;
+      reject(new Error('无法连接到服务器，请确认后端已启动（http://localhost:8000）'));
+    });
+
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        xhr.abort();
+        // 不在此处 reject —— xhr.abort() 会触发 load 或 error 事件，
+        // 也可能不触发。直接用自定义 DOMException 确保只 reject 一次。
+        reject(new DOMException('请求已取消', 'AbortError'));
+      });
+    }
+
+    // 发起请求
+    xhr.open('POST', `${API_BASE}/remove-bg?_t=${Date.now()}`);
+    xhr.responseType = 'blob';
+    xhr.setRequestHeader('Cache-Control', 'no-cache');
+    xhr.send(formData);
+  });
+}
