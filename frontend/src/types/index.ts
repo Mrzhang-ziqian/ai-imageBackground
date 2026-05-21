@@ -55,6 +55,9 @@ export type AllowedType = (typeof ALLOWED_TYPES)[number];
 /** 最大上传文件大小 20MB */
 export const MAX_FILE_SIZE = 20 * 1024 * 1024;
 
+/** 建议最大图片边长：超过此值前端会提示用户（后端硬限制 3000px） */
+export const RECOMMENDED_MAX_DIM = 2500;
+
 /** 后端 API 地址 */
 export const API_BASE = 'http://localhost:8000';
 

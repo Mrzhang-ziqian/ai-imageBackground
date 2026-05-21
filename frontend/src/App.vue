@@ -154,6 +154,17 @@
 
     <AppFooter />
     <ToastMessage :toast="toastState" />
+
+    <!-- 大图尺寸提示对话框 -->
+    <LargeImageDialog
+      :visible="largeImageDialog.visible"
+      :width="largeImageDialog.width"
+      :height="largeImageDialog.height"
+      :resizing="largeImageDialog.resizing"
+      @resize="handleLargeImageResize"
+      @original="handleLargeImageOriginal"
+      @cancel="handleLargeImageCancel"
+    />
   </div>
 </template>
 
@@ -170,11 +181,14 @@ import EdgeToolsPanel from './components/EdgeToolsPanel.vue';
 import DownloadPanel from './components/DownloadPanel.vue';
 import HistoryPanel from './components/HistoryPanel.vue';
 import BatchPanel from './components/BatchPanel.vue';
+import LargeImageDialog from './components/LargeImageDialog.vue';
 import { useBackgroundRemover } from './composables/useBackgroundRemover';
 import { useHistory } from './composables/useHistory';
 import { useBatchProcessor } from './composables/useBatchProcessor';
 import { useToast } from './composables/useToast';
 import type { BgColor, HistoryEntry } from './types';
+import { RECOMMENDED_MAX_DIM } from './types';
+import { readImageDimensions, resizeImageClient, formatFileSize } from './utils/imageUtils';
 
 // ---- 组合式函数 ----
 const remover = useBackgroundRemover();
@@ -195,9 +209,56 @@ const isDone = computed(() => remover.processing.status === 'done');
 /** 当前活跃的历史条目 ID（用于高亮） */
 const activeHistoryId = ref<string>('');
 
+// ---- 大图提示对话框状态 ----
+const largeImageDialog = ref({
+  visible: false,
+  width: 0,
+  height: 0,
+  resizing: false,
+  /** 原始文件（缓存） */
+  file: null as File | null,
+});
+
 // ---- 事件处理 ----
 
 async function handleFileSelected(file: File): Promise<void> {
+  // 1. 同步校验（格式、大小）
+  const validation = remover.validateFile(file);
+  if (!validation.valid) {
+    showToast({ message: validation.error, type: 'error' });
+    return;
+  }
+
+  // 2. 异步检查图片尺寸
+  const dims = await readImageDimensions(file);
+  if (dims && Math.max(dims.width, dims.height) > RECOMMENDED_MAX_DIM) {
+    // 尺寸过大 → 弹出选择对话框
+    largeImageDialog.value = {
+      visible: true,
+      width: dims.width,
+      height: dims.height,
+      resizing: false,
+      file,
+    };
+    return;
+  }
+
+  // 3. 尺寸正常 → 直接处理
+  await doProcessFile(file);
+}
+
+/** 多文件选择 → 进入批量模式 */
+function handleFilesSelected(files: File[]): void {
+  if (files.length === 0) return;
+  const added = batch.addFiles(files);
+  if (added > 0) {
+    viewMode.value = 'batch';
+    showToast({ message: `已添加 ${added} 个文件`, type: 'success' });
+  }
+}
+
+/** 核心处理流程（提取为独立函数，供直通/缩放后调用） */
+async function doProcessFile(file: File): Promise<void> {
   const error = await remover.processImage(file);
   if (error) {
     showToast({ message: error, type: 'error' });
@@ -209,14 +270,53 @@ async function handleFileSelected(file: File): Promise<void> {
   }
 }
 
-/** 多文件选择 → 进入批量模式 */
-function handleFilesSelected(files: File[]): void {
-  if (files.length === 0) return;
-  const added = batch.addFiles(files);
-  if (added > 0) {
-    viewMode.value = 'batch';
-    showToast({ message: `已添加 ${added} 个文件`, type: 'success' });
+/** 对话框：自动调优 → 客户端缩放后上传 */
+async function handleLargeImageResize(): Promise<void> {
+  const file = largeImageDialog.value.file;
+  if (!file) return;
+
+  largeImageDialog.value.resizing = true;
+
+  try {
+    const resized = await resizeImageClient(file, RECOMMENDED_MAX_DIM);
+    // 从缩放后的 Blob 重建 File 对象
+    const resizedFile = new File(
+      [resized],
+      file.name.replace(/\.(\w+)$/, '_resized.$1') || file.name + '_resized',
+      { type: 'image/jpeg' },
+    );
+    largeImageDialog.value.visible = false;
+    await doProcessFile(resizedFile);
+  } catch (err) {
+    showToast({
+      message: err instanceof Error ? err.message : '图片缩放失败，尝试原图上传',
+      type: 'error',
+    });
+    largeImageDialog.value.visible = false;
+    // 降级：直接原图上传
+    await doProcessFile(file);
+  } finally {
+    largeImageDialog.value.resizing = false;
   }
+}
+
+/** 对话框：坚持原图上传 */
+async function handleLargeImageOriginal(): Promise<void> {
+  const file = largeImageDialog.value.file;
+  if (!file) return;
+
+  largeImageDialog.value.visible = false;
+  showToast({
+    message: `原图较大（${formatFileSize(file.size)}），可能需要较长时间处理`,
+    type: 'success',
+  });
+  await doProcessFile(file);
+}
+
+/** 对话框：取消上传 */
+function handleLargeImageCancel(): void {
+  largeImageDialog.value.visible = false;
+  largeImageDialog.value.file = null;
 }
 
 /** 从批量结果查看单图详情 → 切换到单图模式 */
@@ -378,13 +478,8 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
         showToast({ message: validation.error, type: 'error' });
         return;
       }
-      const error = await remover.processImage(file);
-      if (error) {
-        showToast({ message: error, type: 'error' });
-      } else if (remover.processing.status === 'done') {
-        showToast({ message: '背景移除成功！', type: 'success' });
-        await saveToHistory(file);
-      }
+      // 统一走 handleFileSelected（含尺寸检查 + 对话框）
+      await handleFileSelected(file);
       break;
     }
   }

@@ -5,6 +5,7 @@ AI Background Remover - Backend Service
 """
 
 import io
+import gc
 import asyncio
 import logging
 import threading
@@ -40,8 +41,9 @@ app.add_middleware(
 # ---------- 常量 ----------
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
-MAX_IMAGE_DIM = 4096   # 最大允许上传边长（超过拒绝）
-PROCESS_MAX_DIM = 1024  # AI 处理时缩放到的最大边长（大幅提速）
+MAX_IMAGE_DIM = 3000       # 最大允许上传边长（超过拒绝）
+PROCESS_MAX_DIM = 1024     # AI 处理时缩放到的最大边长（大幅提速）
+AI_TIMEOUT_SECONDS = 90    # AI 推理超时（秒）
 
 # 延迟加载模型 session，首次请求时初始化
 # 模型降级链路：u2net（质量最高）→ u2netp（轻量）→ silueta（兜底）
@@ -225,15 +227,36 @@ async def remove_background(file: UploadFile = File(...)):
 
     logger.info(f"处理图片: {file.filename} (原图 {original_size[0]}x{original_size[1]}, {len(contents) / 1024:.1f}KB)")
 
-    # --- 4. AI 移除背景（模型降级 + 重试） ---
+    # --- 4. AI 移除背景（模型降级 + 重试 + 超时保护） ---
     try:
-        ai_result, model_label, was_fallback = await asyncio.to_thread(
-            _run_remove_with_fallback, ai_input
+        ai_result, model_label, was_fallback = await asyncio.wait_for(
+            asyncio.to_thread(_run_remove_with_fallback, ai_input),
+            timeout=AI_TIMEOUT_SECONDS,
         )
         if was_fallback:
             logger.warning(f"注意：主模型不可用，已降级至 {model_label}")
-    except Exception as e:
+    except asyncio.TimeoutError:
+        logger.error(f"背景移除超时（{AI_TIMEOUT_SECONDS}s）: {file.filename}")
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"图片处理超时（{AI_TIMEOUT_SECONDS} 秒）。"
+                "图片可能过大，建议上传长边 ≤ 2000px 的图片，或稍后重试"
+            ),
+        )
+    except MemoryError:
+        logger.error(f"内存不足: {file.filename}")
+        gc.collect()
+        raise HTTPException(
+            status_code=500,
+            detail="服务器内存不足，无法处理该图片。建议：上传更小的图片（长边 ≤ 2000px，文件 ≤ 5MB）",
+        )
+    except RuntimeError as e:
         logger.error(f"背景移除失败 (全部模型均不可用): {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"背景移除处理失败: {e}")
+    except Exception as e:
+        logger.error(f"背景移除未知错误: {e}\n{traceback.format_exc()}")
+        gc.collect()
         raise HTTPException(status_code=500, detail=f"背景移除处理失败: {e}")
 
     # --- 4.5. 还原到原始尺寸：提取 alpha mask → 放大 → 应用到原图 ---
