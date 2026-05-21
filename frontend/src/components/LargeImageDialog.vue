@@ -12,10 +12,15 @@
           </div>
 
           <!-- 标题 -->
-          <h3 class="dialog-title">图片较大</h3>
+          <h3 class="dialog-title">{{ isFileSizeWarning ? '文件较大' : '图片较大' }}</h3>
 
-          <!-- 尺寸信息 -->
-          <div class="dialog-dims">
+          <!-- 文件大小警告（仅文件过大但尺寸 OK 时显示） -->
+          <div v-if="isFileSizeWarning" class="dialog-badge">
+            <span class="badge-file">{{ fileSizeText }}</span>
+          </div>
+
+          <!-- 尺寸信息（尺寸超限时显示） -->
+          <div v-if="!isFileSizeWarning" class="dialog-dims">
             <div class="dim-item">
               <span class="dim-label">当前尺寸</span>
               <span class="dim-value dim-warn">
@@ -37,8 +42,7 @@
 
           <!-- 说明文字 -->
           <p class="dialog-desc">
-            大尺寸图片可能导致处理速度变慢或失败。<br/>
-            建议自动调整为 {{ recommendedMaxDim }}px 以内，不影响视觉效果。
+            {{ isFileSizeWarning ? fileSizeDesc : dimDesc }}
           </p>
 
           <!-- 操作按钮 -->
@@ -68,12 +72,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { RECOMMENDED_MAX_DIM } from '@/types';
+import { formatFileSize } from '@/utils/imageUtils';
 
 const props = defineProps<{
   visible: boolean;
   width: number;
   height: number;
   resizing: boolean;
+  /** 文件大小（字节），用于文件大小警告 */
+  fileSize?: number;
 }>();
 
 const emit = defineEmits<{
@@ -83,6 +90,25 @@ const emit = defineEmits<{
 }>();
 
 const recommendedMaxDim = RECOMMENDED_MAX_DIM;
+
+/** 是否因文件大小触发（而非尺寸） */
+const isFileSizeWarning = computed(() => {
+  const dimOK = Math.max(props.width, props.height) <= RECOMMENDED_MAX_DIM;
+  const fileLarge = (props.fileSize ?? 0) > 2 * 1024 * 1024;
+  return dimOK && fileLarge;
+});
+
+const fileSizeText = computed(() => formatFileSize(props.fileSize ?? 0));
+
+const fileSizeDesc = computed(() =>
+  `文件 ${fileSizeText.value}，体积较大。<br/>`
+  + `大文件可能导致处理失败，建议压缩后再上传。`
+);
+
+const dimDesc = computed(() =>
+  `大尺寸图片可能导致处理速度变慢或失败。<br/>`
+  + `建议自动调整为 ${recommendedMaxDim}px 以内，不影响视觉效果。`
+);
 
 const recommendedW = computed(() => {
   const ratio = RECOMMENDED_MAX_DIM / Math.max(props.width, props.height);
@@ -206,6 +232,22 @@ function handleCancel(): void {
   line-height: 1.6;
   margin: 0 0 22px;
   max-width: 320px;
+}
+
+/* 文件大小徽章 */
+.dialog-badge {
+  margin-bottom: 14px;
+}
+
+.badge-file {
+  display: inline-block;
+  padding: 6px 14px;
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 20px;
+  border: 1px solid #FCD34D;
 }
 
 /* 按钮 */

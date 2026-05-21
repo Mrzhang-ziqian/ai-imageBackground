@@ -161,6 +161,7 @@
       :width="largeImageDialog.width"
       :height="largeImageDialog.height"
       :resizing="largeImageDialog.resizing"
+      :file-size="largeImageDialog.fileSize"
       @resize="handleLargeImageResize"
       @original="handleLargeImageOriginal"
       @cancel="handleLargeImageCancel"
@@ -187,7 +188,7 @@ import { useHistory } from './composables/useHistory';
 import { useBatchProcessor } from './composables/useBatchProcessor';
 import { useToast } from './composables/useToast';
 import type { BgColor, HistoryEntry } from './types';
-import { RECOMMENDED_MAX_DIM } from './types';
+import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT } from './types';
 import { readImageDimensions, resizeImageClient, formatFileSize } from './utils/imageUtils';
 
 // ---- 组合式函数 ----
@@ -214,6 +215,7 @@ const largeImageDialog = ref({
   visible: false,
   width: 0,
   height: 0,
+  fileSize: 0,
   resizing: false,
   /** 原始文件（缓存） */
   file: null as File | null,
@@ -231,19 +233,34 @@ async function handleFileSelected(file: File): Promise<void> {
 
   // 2. 异步检查图片尺寸
   const dims = await readImageDimensions(file);
+
+  // 2a. 尺寸过大 → 弹出选择对话框
   if (dims && Math.max(dims.width, dims.height) > RECOMMENDED_MAX_DIM) {
-    // 尺寸过大 → 弹出选择对话框
     largeImageDialog.value = {
       visible: true,
       width: dims.width,
       height: dims.height,
+      fileSize: file.size,
       resizing: false,
       file,
     };
     return;
   }
 
-  // 3. 尺寸正常 → 直接处理
+  // 2b. 文件大小过大（即使尺寸 OK）→ 也弹窗警告
+  if (file.size > MAX_FILE_SIZE_SOFT) {
+    largeImageDialog.value = {
+      visible: true,
+      width: dims?.width ?? 0,
+      height: dims?.height ?? 0,
+      fileSize: file.size,
+      resizing: false,
+      file,
+    };
+    return;
+  }
+
+  // 3. 尺寸 + 大小均正常 → 直接处理
   await doProcessFile(file);
 }
 

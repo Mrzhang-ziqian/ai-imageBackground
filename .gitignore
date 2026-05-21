@@ -6,6 +6,7 @@ __pycache__/
 venv/
 env/
 models/
+*.log
 
 # 临时文件
 backend/temp/

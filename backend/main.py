@@ -20,7 +20,14 @@ from PIL import Image
 from rembg import remove, new_session
 
 # ---------- 日志 ----------
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),           # 输出到 stderr（终端可见）
+        logging.FileHandler("backend.log", mode="a", encoding="utf-8"),  # 写入文件
+    ],
+)
 logger = logging.getLogger(__name__)
 
 # ---------- 应用初始化 ----------
@@ -42,7 +49,7 @@ app.add_middleware(
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 MAX_IMAGE_DIM = 3000       # 最大允许上传边长（超过拒绝）
-PROCESS_MAX_DIM = 1024     # AI 处理时缩放到的最大边长（大幅提速）
+PROCESS_MAX_DIM = 800      # AI 处理时缩放到的最大边长（降低内存压力）
 AI_TIMEOUT_SECONDS = 90    # AI 推理超时（秒）
 
 # 延迟加载模型 session，首次请求时初始化
@@ -194,6 +201,7 @@ async def remove_background(file: UploadFile = File(...)):
     # --- 3. 解析图片 ---
     try:
         image = Image.open(io.BytesIO(contents))
+        image.load()  # 强制解码，提前暴露损坏图片
     except Exception as e:
         logger.error(f"解析图片失败: {e}")
         raise HTTPException(status_code=400, detail="无法解析图片，请确认文件格式正确。")
@@ -205,27 +213,44 @@ async def remove_background(file: UploadFile = File(...)):
             detail=f"图片尺寸过大 (最大 {MAX_IMAGE_DIM}px)，当前: {image.width}x{image.height}",
         )
 
-    # 转换为 RGBA 模式
-    if image.mode != "RGBA":
-        image = image.convert("RGBA")
-
-    # --- 3.5. 为 AI 推理准备低分辨率输入（保留原图用于最终合成） ---
     original_size = (image.width, image.height)
-    original_image = image  # 保留 RGBA 原图
-    ai_input = image
-    scaled = False
-
-    if max(ai_input.width, ai_input.height) > PROCESS_MAX_DIM:
-        ratio = PROCESS_MAX_DIM / max(ai_input.width, ai_input.height)
-        new_w = int(ai_input.width * ratio)
-        new_h = int(ai_input.height * ratio)
-        ai_input = ai_input.resize((new_w, new_h), Image.LANCZOS)
-        scaled = True
-        logger.info(
-            f"AI 输入已缩放: {original_size[0]}x{original_size[1]} -> {new_w}x{new_h}"
-        )
-
     logger.info(f"处理图片: {file.filename} (原图 {original_size[0]}x{original_size[1]}, {len(contents) / 1024:.1f}KB)")
+
+    # --- 3.5. 先缩放再转 RGBA，减少峰值内存 ---
+    try:
+        needs_scale = max(original_size[0], original_size[1]) > PROCESS_MAX_DIM
+        if needs_scale:
+            ratio = PROCESS_MAX_DIM / max(original_size[0], original_size[1])
+            new_w = int(original_size[0] * ratio)
+            new_h = int(original_size[1] * ratio)
+            # 先缩放原图（可能仍是 RGB/P 等模式），再转 RGBA
+            ai_input = image.resize((new_w, new_h), Image.LANCZOS)
+            if ai_input.mode != "RGBA":
+                ai_input = ai_input.convert("RGBA")
+            scaled = True
+            logger.info(f"AI 输入已缩放: {original_size[0]}x{original_size[1]} -> {new_w}x{new_h}")
+        else:
+            # 无需缩放：直接转 RGBA
+            if image.mode != "RGBA":
+                ai_input = image.convert("RGBA")
+            else:
+                ai_input = image.copy()
+            scaled = False
+
+        # 保留 RGBA 原图（仅缩放时需要，用于最终 alpha 还原）
+        if scaled:
+            if image.mode != "RGBA":
+                original_image = image.convert("RGBA")
+            else:
+                original_image = image.copy()
+        else:
+            original_image = ai_input
+    except Exception as e:
+        logger.error(f"图片预处理失败 (缩放/转RGBA): {e}")
+        raise HTTPException(status_code=400, detail=f"图片预处理失败: {e}")
+
+    # 主动触发垃圾回收，减少内存碎片
+    gc.collect()
 
     # --- 4. AI 移除背景（模型降级 + 重试 + 超时保护） ---
     try:
