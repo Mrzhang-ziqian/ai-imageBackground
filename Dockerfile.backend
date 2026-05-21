@@ -1,0 +1,38 @@
+# ==========================================
+#  AI Background Remover — 后端 Docker 镜像
+# ==========================================
+FROM python:3.11-slim
+
+LABEL maintainer="AI Background Remover"
+LABEL description="FastAPI + rembg 背景移除服务"
+
+# 系统依赖（Pillow 可选优化 + rembg ONNX 运行时）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 安装 Python 依赖（分层缓存）
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 预下载 rembg 模型（避免首次请求等待）
+RUN python -c "from rembg import new_session; new_session('u2net')" \
+    && python -c "from rembg import new_session; new_session('u2netp')" \
+    && python -c "from rembg import new_session; new_session('silueta')"
+
+# 复制后端代码
+COPY backend/ .
+
+# 创建临时目录
+RUN mkdir -p /app/temp
+
+EXPOSE 8000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

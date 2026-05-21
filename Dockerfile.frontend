@@ -1,0 +1,36 @@
+# ==========================================
+#  AI Background Remover — 前端 Docker 镜像
+#  （多阶段构建：Vue 编译 + Nginx 静态服务）
+# ==========================================
+
+# ── Stage 1: 构建 Vue 应用 ──
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# 安装依赖（分层缓存）
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --prefer-offline
+
+# 复制源码并构建
+COPY frontend/ .
+RUN npm run build
+
+# ── Stage 2: Nginx 静态服务 ──
+FROM nginx:alpine
+
+LABEL maintainer="AI Background Remover"
+LABEL description="Vue 3 前端 + Nginx 静态服务"
+
+# 复制构建产物
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# 自定义 Nginx 配置（API 代理到后端）
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:3000/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

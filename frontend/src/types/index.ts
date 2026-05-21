@@ -61,8 +61,12 @@ export const RECOMMENDED_MAX_DIM = 2000;
 /** 文件大小软限制（2MB）：超过此值前端会弹出提示（后端硬限制 20MB） */
 export const MAX_FILE_SIZE_SOFT = 2 * 1024 * 1024;
 
-/** 后端 API 地址 */
-export const API_BASE = 'http://localhost:8000';
+/**
+ * 后端 API 地址
+ * - 开发模式：Vite proxy 自动转发 /api/* → http://localhost:8000/*
+ * - Docker 生产：Nginx proxy 自动转发 /api/* → http://backend:8000/*
+ */
+export const API_BASE = '/api';
 
 /** 预设背景色选项（带标签） */
 export interface ColorPreset {

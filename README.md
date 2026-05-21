@@ -23,7 +23,38 @@
 
 ## 快速开始
 
-### 1. 安装后端依赖
+### 🐳 Docker 一键部署（推荐）
+
+```bash
+git clone <repo-url>
+cd ai-background-remover
+docker compose up -d
+```
+
+浏览器打开 **http://localhost:3000** 即可使用。
+
+> 首次构建会下载 rembg AI 模型（~170MB），约需 3-5 分钟。后续启动秒级完成。
+
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| 前端 | http://localhost:3000 | Vue 3 应用（Nginx 静态服务） |
+| 后端 | http://localhost:8000 | FastAPI API 服务 |
+| API 文档 | http://localhost:8000/docs | Swagger 交互文档 |
+
+```bash
+# 查看日志
+docker compose logs -f
+
+# 停止服务
+docker compose down
+
+# 重建（代码更新后）
+docker compose up -d --build
+```
+
+### 本地开发
+
+#### 1. 安装后端依赖
 
 ```bash
 cd backend
