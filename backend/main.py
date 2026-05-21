@@ -6,12 +6,14 @@ AI Background Remover - Backend Service
 
 import io
 import gc
+import re
 import asyncio
 import logging
 import threading
 import time
 import traceback
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -305,11 +307,17 @@ async def remove_background(file: UploadFile = File(...)):
 
     logger.info(f"处理完成: {file.filename} ({final_result.width}x{final_result.height}, {result_size_kb:.1f}KB)")
 
+    # 安全文件名：仅保留 ASCII 安全字符（字母数字、中文、下划线、连字符、点）
+    original_stem = Path(file.filename or "image").stem
+    safe_stem = re.sub(r'[^\w\u4e00-\u9fff.-]', '_', original_stem) or "image"
+    # RFC 5987: 非 ASCII 文件名使用 filename*=UTF-8 编码
+    encoded_filename = quote(f"removed_bg_{safe_stem}.png")
+
     return StreamingResponse(
         output,
         media_type="image/png",
         headers={
-            "Content-Disposition": f"attachment; filename=removed_bg_{Path(file.filename).stem}.png",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
             "X-Image-Width": str(final_result.width),
             "X-Image-Height": str(final_result.height),
             "X-Model-Used": model_label,
