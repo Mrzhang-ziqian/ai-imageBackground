@@ -1,7 +1,8 @@
 import { ref, reactive, shallowRef, readonly } from 'vue';
-import type { ProcessingState, BgColor, FileValidationResult, ImageDimensions } from '@/types';
-import { ALLOWED_TYPES, MAX_FILE_SIZE } from '@/types';
+import type { ProcessingState, BgColor, FileValidationResult, ImageDimensions, BackgroundTemplate } from '@/types';
+import { ALLOWED_TYPES, MAX_FILE_SIZE, BACKGROUND_TEMPLATES } from '@/types';
 import { uploadAndRemoveBg } from '@/services/api';
+import { renderWithTemplate } from './useTemplateRenderer';
 
 /**
  * 图片背景移除核心逻辑 —— 组合式函数。
@@ -24,6 +25,8 @@ export function useBackgroundRemover() {
   const currentBgColor = ref<BgColor>('transparent');
   const resultDimensions = ref<ImageDimensions | null>(null);
   const modelUsed = ref<string>('');
+
+  const currentTemplateId = ref<string | null>(null);
 
   const processing = reactive<ProcessingState>({
     status: 'idle',
@@ -66,6 +69,7 @@ export function useBackgroundRemover() {
     resultUrl.value = '';
     resultDimensions.value = null;
     currentBgColor.value = 'transparent';
+    currentTemplateId.value = null;
 
     originalUrl.value = URL.createObjectURL(file);
 
@@ -153,6 +157,7 @@ export function useBackgroundRemover() {
     resultDimensions.value = null;
     modelUsed.value = '';
     currentBgColor.value = 'transparent';
+    currentTemplateId.value = null;
 
     processing.status = 'uploading';
     processing.progress = 0;
@@ -275,10 +280,12 @@ export function useBackgroundRemover() {
 
   /**
    * 应用背景色：transparent 用原始图，其它用 Canvas 合成。
+   * 注意：应用背景色会清除模板选择。
    * @returns 错误消息，无错误返回 null
    */
   async function applyBackgroundColor(color: BgColor): Promise<string | null> {
     currentBgColor.value = color;
+    currentTemplateId.value = null; // 清除模板
     const tBlob = transparentBlob.value;
     if (!tBlob) return null;
 
@@ -297,6 +304,45 @@ export function useBackgroundRemover() {
       return null;
     } catch (err: unknown) {
       return err instanceof Error ? err.message : '背景颜色合成失败';
+    }
+  }
+
+  // ---- Template Background ----
+
+  /**
+   * 应用模板背景：使用 Canvas 合成模板背景（渐变/阴影等）。
+   * 注意：应用模板会清除纯色背景选择。
+   * @param templateId 模板 ID，传 null 则移除模板（回退到透明底）
+   * @returns 错误消息，无错误返回 null
+   */
+  async function applyTemplate(templateId: string | null): Promise<string | null> {
+    const tBlob = transparentBlob.value;
+    if (!tBlob) return null;
+
+    if (!templateId) {
+      // 移除模板 → 回到透明背景
+      currentTemplateId.value = null;
+      if (resultUrl.value) URL.revokeObjectURL(resultUrl.value);
+      resultUrl.value = URL.createObjectURL(tBlob);
+      resultBlob.value = tBlob;
+      currentBgColor.value = 'transparent';
+      return null;
+    }
+
+    const template = BACKGROUND_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return `未找到模板: ${templateId}`;
+
+    try {
+      const rendered = await renderWithTemplate(tBlob, template);
+      if (resultUrl.value) URL.revokeObjectURL(resultUrl.value);
+      resultUrl.value = URL.createObjectURL(rendered);
+      resultBlob.value = rendered;
+      currentTemplateId.value = templateId;
+      // 模板与纯色互斥：清除纯色状态
+      currentBgColor.value = 'transparent';
+      return null;
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : '模板渲染失败';
     }
   }
 
@@ -348,6 +394,7 @@ export function useBackgroundRemover() {
     resultDimensions.value = params.dimensions;
     modelUsed.value = params.modelUsed;
     currentBgColor.value = 'transparent';
+    currentTemplateId.value = null;
 
     Object.assign(processing, {
       status: 'done' as const,
@@ -388,6 +435,7 @@ export function useBackgroundRemover() {
     modelUsed.value = '';
     resultFilename.value = 'removed_bg.png';
     currentBgColor.value = 'transparent';
+    currentTemplateId.value = null;
     Object.assign(processing, {
       status: 'idle' as const,
       progress: 0,
@@ -409,6 +457,7 @@ export function useBackgroundRemover() {
     resultDimensions: readonly(resultDimensions),
     modelUsed: readonly(modelUsed),
     currentBgColor: readonly(currentBgColor),
+    currentTemplateId: readonly(currentTemplateId),
     processing: readonly(processing) as ProcessingState,
 
     // 方法
@@ -419,6 +468,7 @@ export function useBackgroundRemover() {
     reset,
     abortCurrent,
     applyBackgroundColor,
+    applyTemplate,
     downloadResult,
   };
 }

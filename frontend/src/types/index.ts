@@ -90,3 +90,157 @@ export interface HistoryEntry {
 /** 处理历史的 localStorage key */
 export const HISTORY_KEY = 'ai-bg-remover-history';
 export const MAX_HISTORY = 20;
+
+// ============================================================
+// G12: 模板背景库
+// ============================================================
+
+/** 模板分类 */
+export type TemplateCategory = '电商' | '渐变' | '场景';
+
+/** 阴影配置 */
+export interface ShadowConfig {
+  blur: number;
+  offsetX: number;
+  offsetY: number;
+  color: string;
+}
+
+/** 渐变配置 */
+export interface GradientConfig {
+  type: 'linear' | 'radial';
+  colors: string[];
+  angle?: number;
+}
+
+/** 背景模板定义 */
+export interface BackgroundTemplate {
+  id: string;
+  name: string;
+  category: TemplateCategory;
+  /** CSS 预览样式（用于卡片缩略图） */
+  previewStyle: Record<string, string>;
+  /** 背景色（非透明） */
+  backgroundColor: string;
+  /** 阴影配置（可选，无则不渲染） */
+  shadow?: ShadowConfig;
+  /** 渐变叠加（可选） */
+  gradient?: GradientConfig;
+}
+
+/** 全部预设模板 */
+export const BACKGROUND_TEMPLATES: BackgroundTemplate[] = [
+  // ---- 电商 ----
+  {
+    id: 'white-shadow',
+    name: '纯白阴影',
+    category: '电商',
+    previewStyle: { background: '#FFFFFF' },
+    backgroundColor: '#FFFFFF',
+    shadow: { blur: 28, offsetX: 0, offsetY: 8, color: 'rgba(0,0,0,0.10)' },
+  },
+  {
+    id: 'light-gray-shadow',
+    name: '浅灰阴影',
+    category: '电商',
+    previewStyle: { background: '#F3F4F6' },
+    backgroundColor: '#F3F4F6',
+    shadow: { blur: 24, offsetX: 0, offsetY: 6, color: 'rgba(0,0,0,0.10)' },
+  },
+  {
+    id: 'warm-white-shadow',
+    name: '暖白阴影',
+    category: '电商',
+    previewStyle: { background: '#FAF7F2' },
+    backgroundColor: '#FAF7F2',
+    shadow: { blur: 26, offsetX: 0, offsetY: 6, color: 'rgba(0,0,0,0.08)' },
+  },
+  {
+    id: 'beige-shadow',
+    name: '米色阴影',
+    category: '电商',
+    previewStyle: { background: '#F5F0E8' },
+    backgroundColor: '#F5F0E8',
+    shadow: { blur: 24, offsetX: 0, offsetY: 5, color: 'rgba(0,0,0,0.09)' },
+  },
+  {
+    id: 'dark-display',
+    name: '深灰展示',
+    category: '电商',
+    previewStyle: { background: '#374151' },
+    backgroundColor: '#374151',
+    shadow: { blur: 32, offsetX: 0, offsetY: 10, color: 'rgba(0,0,0,0.22)' },
+  },
+
+  // ---- 渐变 ----
+  {
+    id: 'sky-gradient',
+    name: '天空渐变',
+    category: '渐变',
+    previewStyle: { background: 'linear-gradient(180deg, #E0F2FE 0%, #FFFFFF 100%)' },
+    backgroundColor: '#FFFFFF',
+    gradient: { type: 'linear', colors: ['#E0F2FE', '#FFFFFF'], angle: 180 },
+  },
+  {
+    id: 'sunset-warm',
+    name: '日落暖调',
+    category: '渐变',
+    previewStyle: { background: 'linear-gradient(135deg, #FDE68A 0%, #F9A8D4 100%)' },
+    backgroundColor: '#F9A8D4',
+    gradient: { type: 'linear', colors: ['#FDE68A', '#F9A8D4'], angle: 135 },
+  },
+  {
+    id: 'tech-purple',
+    name: '科技紫蓝',
+    category: '渐变',
+    previewStyle: { background: 'linear-gradient(135deg, #8B5CF6 0%, #3B82F6 100%)' },
+    backgroundColor: '#3B82F6',
+    gradient: { type: 'linear', colors: ['#8B5CF6', '#3B82F6'], angle: 135 },
+  },
+  {
+    id: 'fresh-green',
+    name: '清新绿',
+    category: '渐变',
+    previewStyle: { background: 'linear-gradient(180deg, #D1FAE5 0%, #FFFFFF 100%)' },
+    backgroundColor: '#FFFFFF',
+    gradient: { type: 'linear', colors: ['#D1FAE5', '#FFFFFF'], angle: 180 },
+  },
+  {
+    id: 'monochrome',
+    name: '黑白极简',
+    category: '渐变',
+    previewStyle: { background: 'linear-gradient(135deg, #F9FAFB 0%, #1F2937 100%)' },
+    backgroundColor: '#F9FAFB',
+    gradient: { type: 'linear', colors: ['#F9FAFB', '#1F2937'], angle: 135 },
+  },
+
+  // ---- 场景 ----
+  {
+    id: 'studio-light',
+    name: '工作室灯光',
+    category: '场景',
+    previewStyle: { background: 'radial-gradient(ellipse at center, #FFFFFF 30%, #E5E7EB 100%)' },
+    backgroundColor: '#E5E7EB',
+    gradient: { type: 'radial', colors: ['#FFFFFF', '#E5E7EB'] },
+    shadow: { blur: 20, offsetX: 0, offsetY: 4, color: 'rgba(0,0,0,0.08)' },
+  },
+  {
+    id: 'dark-stage',
+    name: '暗色舞台',
+    category: '场景',
+    previewStyle: { background: 'radial-gradient(ellipse at center, #4B5563 0%, #111827 100%)' },
+    backgroundColor: '#111827',
+    gradient: { type: 'radial', colors: ['#4B5563', '#111827'] },
+  },
+  {
+    id: 'product-pedestal',
+    name: '产品展台',
+    category: '场景',
+    previewStyle: {
+      background: '#FFFFFF',
+      borderBottom: '4px solid #E5E7EB',
+    },
+    backgroundColor: '#FFFFFF',
+    shadow: { blur: 30, offsetX: 0, offsetY: 12, color: 'rgba(0,0,0,0.12)' },
+  },
+] as const;

@@ -57,6 +57,14 @@
               @update:model-value="handleBgColorChange"
             />
 
+            <!-- 背景模板选择器（处理完成后显示） -->
+            <BackgroundTemplatePicker
+              v-if="remover.processing.status === 'done'"
+              :model-value="remover.currentTemplateId.value"
+              :subject-blob="remover.transparentBlob.value"
+              @update:model-value="handleTemplateChange"
+            />
+
             <!-- 下载面板 -->
             <DownloadPanel
               v-if="remover.processing.status === 'done'"
@@ -107,6 +115,7 @@ import ToastMessage from './components/ToastMessage.vue';
 import UploadZone from './components/UploadZone.vue';
 import PreviewGrid from './components/PreviewGrid.vue';
 import BackgroundColorPicker from './components/BackgroundColorPicker.vue';
+import BackgroundTemplatePicker from './components/BackgroundTemplatePicker.vue';
 import DownloadPanel from './components/DownloadPanel.vue';
 import HistoryPanel from './components/HistoryPanel.vue';
 import { useBackgroundRemover } from './composables/useBackgroundRemover';
@@ -180,6 +189,13 @@ function handleDownloadToast(payload: { message: string; type: 'success' | 'erro
 
 async function handleBgColorChange(color: BgColor): Promise<void> {
   const error = await remover.applyBackgroundColor(color);
+  if (error) {
+    showToast({ message: error, type: 'error' });
+  }
+}
+
+async function handleTemplateChange(templateId: string | null): Promise<void> {
+  const error = await remover.applyTemplate(templateId);
   if (error) {
     showToast({ message: error, type: 'error' });
   }
