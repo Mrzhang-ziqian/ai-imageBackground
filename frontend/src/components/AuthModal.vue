@@ -33,7 +33,7 @@
               <ul class="feature-list">
                 <li class="feature-item">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13 4L6 12L3 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  <span>每日 {{ isLogin ? '5' : '5' }} 次免费额度</span>
+                  <span>每日 5 次免费额度</span>
                 </li>
                 <li class="feature-item">
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13 4L6 12L3 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -68,7 +68,7 @@
               <button
                 class="tab-btn"
                 :class="{ active: isLogin }"
-                @click="isLogin = true"
+                @click="switchToMode(true)"
                 type="button"
               >
                 登录
@@ -76,7 +76,7 @@
               <button
                 class="tab-btn"
                 :class="{ active: !isLogin }"
-                @click="isLogin = false"
+                @click="switchToMode(false)"
                 type="button"
               >
                 注册
@@ -219,6 +219,12 @@ const password = ref('')
 const submitting = ref(false)
 const errorMsg = ref('')
 const showPassword = ref(false)
+
+/** 安全切换模式 — 防止重复切换，始终清理表单状态 */
+function switchToMode(loginMode: boolean) {
+  if (isLogin.value === loginMode) return
+  toggleMode()
+}
 
 function toggleMode() {
   isLogin.value = !isLogin.value
@@ -451,6 +457,7 @@ async function handleSubmit() {
   background: var(--bg, #f9fafb);
   border-radius: 10px;
   padding: 4px;
+  isolation: isolate;
 }
 .tab-btn {
   flex: 1;
@@ -462,13 +469,18 @@ async function handleSubmit() {
   color: var(--text-muted, #9ca3af);
   border-radius: 8px;
   cursor: pointer;
-  transition: color 0.2s;
+  transition: color 0.25s ease;
   position: relative;
   z-index: 1;
+  user-select: none;
 }
 .tab-btn.active {
   color: var(--text, #111827);
 }
+.tab-btn:hover:not(.active) {
+  color: var(--text-secondary, #6b7280);
+}
+
 .tab-indicator {
   position: absolute;
   top: 4px;
@@ -478,10 +490,11 @@ async function handleSubmit() {
   background: var(--surface, #fff);
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
-  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .tab-indicator.right {
-  transform: translateX(50%);
+  /* translateX(100%) = 移动自身宽度的 100%，即恰好跨过一个 Tab */
+  transform: translateX(100%);
 }
 
 /* ---- 错误提示 ---- */
