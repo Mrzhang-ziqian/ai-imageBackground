@@ -215,15 +215,19 @@ import { useToast } from './composables/useToast';
 import { useQuota } from './composables/useQuota';
 import { useAuth } from './composables/useAuth';
 import type { BgColor, HistoryEntry } from './types';
-import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT } from './types';
+import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT, getHistoryKey } from './types';
 import { readImageDimensions, resizeImageClient, formatFileSize } from './utils/imageUtils';
 
 // ---- 组合式函数 ----
 const remover = useBackgroundRemover();
-const history = useHistory();
+const auth = useAuth();
+
+/** 历史记录按用户 ID 隔离：每个账号独立 localStorage 分区 */
+const historyStorageKey = computed(() => getHistoryKey(auth.user.value?.id));
+const history = useHistory(historyStorageKey);
+
 const batch = useBatchProcessor();
 const { toast: toastState, showToast } = useToast();
-const auth = useAuth();
 const quota = useQuota();
 
 // ---- 鉴权弹窗 ----

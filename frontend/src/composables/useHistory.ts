@@ -1,6 +1,6 @@
-import { ref, readonly } from 'vue';
+import { ref, readonly, watch, type Ref } from 'vue';
 import type { HistoryEntry } from '@/types';
-import { HISTORY_KEY, MAX_HISTORY } from '@/types';
+import { getHistoryKey, MAX_HISTORY } from '@/types';
 import { computeSHA256 } from '@/utils/crypto';
 
 /**
@@ -40,14 +40,16 @@ function generateThumbnail(blob: Blob, maxSide = 120, fmt: 'jpeg' | 'png' = 'jpe
 /**
  * 处理历史 composable。
  * 使用 localStorage 持久化，最多 MAX_HISTORY 条记录。
+ *
+ * @param storageKey  响应式的 localStorage key（由外部根据用户 ID 计算，实现多账号隔离）
  */
-export function useHistory() {
+export function useHistory(storageKey: Ref<string>) {
   const entries = ref<HistoryEntry[]>([]);
 
   // ---- 从 localStorage 加载 ----
   function load(): void {
     try {
-      const raw = localStorage.getItem(HISTORY_KEY);
+      const raw = localStorage.getItem(storageKey.value);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
@@ -62,13 +64,13 @@ export function useHistory() {
   // ---- 持久化到 localStorage ----
   function persist(): void {
     try {
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.value));
+      localStorage.setItem(storageKey.value, JSON.stringify(entries.value));
     } catch {
       // localStorage 满了 —— 尝试删除最旧条目
       if (entries.value.length > 1) {
         entries.value = entries.value.slice(0, Math.floor(entries.value.length * 0.7));
         try {
-          localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.value));
+          localStorage.setItem(storageKey.value, JSON.stringify(entries.value));
         } catch {
           // 仍然失败，放弃
         }
@@ -156,8 +158,11 @@ export function useHistory() {
     persist();
   }
 
-  // ---- 初始化加载 ----
-  load();
+  // ---- 监听 key 变化（账号切换时自动加载对应用户的历史） ----
+  watch(storageKey, () => {
+    entries.value = [];
+    load();
+  }, { immediate: true });
 
   return {
     entries: readonly(entries),

@@ -70,6 +70,10 @@ async function register(email: string, username: string, password: string): Prom
 }
 
 function logout(): void {
+  // 清除当前用户的 localStorage 历史（防止切换账号残留）
+  if (user.value?.id) {
+    try { localStorage.removeItem(`ai-bg-remover-history:${user.value.id}`); } catch { /* ignore */ }
+  }
   token.value = null
   user.value = null
   localStorage.removeItem('auth_token')

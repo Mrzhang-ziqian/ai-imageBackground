@@ -172,8 +172,10 @@ export interface HistoryEntry {
   fileHash?: string;
 }
 
-/** 处理历史的 localStorage key */
-export const HISTORY_KEY = 'ai-bg-remover-history';
+/** 处理历史的 localStorage key — 按用户 ID 隔离 */
+export function getHistoryKey(userId: number | null | undefined): string {
+  return userId ? `ai-bg-remover-history:${userId}` : 'ai-bg-remover-history';
+}
 export const MAX_HISTORY = 20;
 
 // ============================================================

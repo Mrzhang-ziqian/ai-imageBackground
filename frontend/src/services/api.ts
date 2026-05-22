@@ -37,8 +37,13 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<any> {
   if (!res.ok) {
     let msg = `请求失败 (${res.status})`;
     try {
-      const err: ApiError = await res.json();
-      msg = err.detail ?? msg;
+      const body = await res.json();
+      if (Array.isArray(body.detail)) {
+        // FastAPI 字段级校验错误：detail 是 [{loc, msg, type}, ...] 数组
+        msg = body.detail.map((e: any) => e.msg).join('；');
+      } else {
+        msg = body.detail ?? msg;
+      }
     } catch { /* ignore */ }
     throw new AuthApiError(msg, res.status);
   }
@@ -69,8 +74,12 @@ export const authApi = {
     if (!res.ok) {
       let msg = `鉴权失败 (${res.status})`;
       try {
-        const err: ApiError = await res.json();
-        msg = err.detail ?? msg;
+        const body = await res.json();
+        if (Array.isArray(body.detail)) {
+          msg = body.detail.map((e: any) => e.msg).join('；');
+        } else {
+          msg = body.detail ?? msg;
+        }
       } catch { /* ignore */ }
       throw new AuthApiError(msg, res.status);
     }
