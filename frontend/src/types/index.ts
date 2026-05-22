@@ -1,3 +1,26 @@
+// ============================================================
+// Phase 5: 用户体系
+// ============================================================
+
+/** 用户信息 */
+export interface UserInfo {
+  id: number;
+  email: string;
+  username: string;
+  plan: 'free' | 'pro' | 'team';
+  quota_daily: number;
+  quota_used: number;
+}
+
+/** 登录/注册响应 */
+export interface AuthTokenResponse {
+  access_token: string;
+  token_type: string;
+  user: UserInfo;
+}
+
+// ============================================================
+
 /** 支持的图片 MIME 类型 */
 export const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 

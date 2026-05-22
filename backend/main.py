@@ -1,7 +1,7 @@
 """
 AI Background Remover - Backend Service
 基于 FastAPI + rembg 的图像背景移除 API
-支持并发处理多张图片 (线程池)
+支持并发处理多张图片 (线程池) + 用户体系 (Phase 5)
 """
 
 import io
@@ -12,14 +12,20 @@ import logging
 import threading
 import time
 import traceback
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from PIL import Image
 from rembg import remove, new_session
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database import init_db, get_db
+from auth import router as auth_router, get_current_user
+from models import User
 
 # ---------- 日志 ----------
 logging.basicConfig(
@@ -33,10 +39,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------- 应用初始化 ----------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: init DB. Shutdown: cleanup."""
+    await init_db()
+    logger.info("数据库初始化完成 (data/app.db)")
+    yield
+
 app = FastAPI(
     title="AI Background Remover",
     description="基于 rembg 模型的图像背景移除 API",
-    version="1.0.0",
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
 # CORS 配置 —— 允许前端跨域访问
@@ -46,6 +60,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 注册鉴权路由
+app.include_router(auth_router)
 
 # ---------- 常量 ----------
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
@@ -174,10 +191,19 @@ async def http_exception_handler(request, exc: HTTPException):
 
 # ---------- 背景移除 ----------
 @app.post("/remove-bg")
-async def remove_background(file: UploadFile = File(...)):
+async def remove_background(
+    file: UploadFile = File(...),
+    current_user: User | None = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """
     接收图片文件，移除背景后返回透明 PNG。
     AI 推理在线程池中执行，不阻塞事件循环，支持并发。
+
+    鉴权（可选）：
+    - 未登录：无限制（Phase 5 暂不限制，Phase 6 将收紧）
+    - 已登录（free）：每日有限配额
+    - 已登录（pro/team）：无限制
     """
     # --- 1. 校验文件类型 ---
     if file.content_type not in ALLOWED_TYPES:
@@ -214,6 +240,14 @@ async def remove_background(file: UploadFile = File(...)):
             status_code=400,
             detail=f"图片尺寸过大 (最大 {MAX_IMAGE_DIM}px)，当前: {image.width}x{image.height}",
         )
+
+    # --- 3.2 配额检查（已登录免费用户） ---
+    if current_user and current_user.plan == "free":
+        if current_user.quota_used >= current_user.quota_daily:
+            raise HTTPException(
+                status_code=429,
+                detail=f"今日免费配额已用完 ({current_user.quota_used}/{current_user.quota_daily})，请升级至 Pro 版",
+            )
 
     original_size = (image.width, image.height)
     logger.info(f"处理图片: {file.filename} (原图 {original_size[0]}x{original_size[1]}, {len(contents) / 1024:.1f}KB)")
@@ -307,21 +341,36 @@ async def remove_background(file: UploadFile = File(...)):
 
     logger.info(f"处理完成: {file.filename} ({final_result.width}x{final_result.height}, {result_size_kb:.1f}KB)")
 
+    # --- 5.5 配额递增（已登录免费用户） ---
+    if current_user and current_user.plan == "free":
+        current_user.quota_used += 1
+        await db.commit()
+        logger.info(
+            f"用户配额更新: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
+        )
+
     # 安全文件名：仅保留 ASCII 安全字符（字母数字、中文、下划线、连字符、点）
     original_stem = Path(file.filename or "image").stem
     safe_stem = re.sub(r'[^\w\u4e00-\u9fff.-]', '_', original_stem) or "image"
     # RFC 5987: 非 ASCII 文件名使用 filename*=UTF-8 编码
     encoded_filename = quote(f"removed_bg_{safe_stem}.png")
 
+    # 响应头
+    resp_headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+        "X-Image-Width": str(final_result.width),
+        "X-Image-Height": str(final_result.height),
+        "X-Model-Used": model_label,
+    }
+    if current_user:
+        resp_headers["X-Quota-Plan"] = current_user.plan
+        resp_headers["X-Quota-Used"] = str(current_user.quota_used)
+        resp_headers["X-Quota-Daily"] = str(current_user.quota_daily)
+
     return StreamingResponse(
         output,
         media_type="image/png",
-        headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
-            "X-Image-Width": str(final_result.width),
-            "X-Image-Height": str(final_result.height),
-            "X-Model-Used": model_label,
-        },
+        headers=resp_headers,
     )
 
 

@@ -1,5 +1,76 @@
-import type { RemoveBgResult, ImageDimensions } from '@/types';
+import type { RemoveBgResult, ImageDimensions, AuthTokenResponse } from '@/types';
 import { API_BASE } from '@/types';
+
+// ============ Phase 5: Auth API ============
+
+/** 后端返回的错误结构 */
+interface ApiError {
+  detail?: string;
+}
+
+class AuthApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'AuthApiError';
+    this.status = status;
+  }
+}
+
+async function authFetch(url: string, options: RequestInit = {}): Promise<any> {
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    let msg = `请求失败 (${res.status})`;
+    try {
+      const err: ApiError = await res.json();
+      msg = err.detail ?? msg;
+    } catch { /* ignore */ }
+    throw new AuthApiError(msg, res.status);
+  }
+
+  return res.json();
+}
+
+export const authApi = {
+  async login(email: string, password: string): Promise<AuthTokenResponse> {
+    return authFetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+  },
+
+  async register(email: string, username: string, password: string): Promise<AuthTokenResponse> {
+    return authFetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      body: JSON.stringify({ email, username, password }),
+    });
+  },
+
+  async getMe(token: string): Promise<AuthTokenResponse['user']> {
+    // fetch + Authorization header
+    const res = await fetch(`${API_BASE}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      let msg = `鉴权失败 (${res.status})`;
+      try {
+        const err: ApiError = await res.json();
+        msg = err.detail ?? msg;
+      } catch { /* ignore */ }
+      throw new AuthApiError(msg, res.status);
+    }
+    return res.json();
+  },
+};
+
+// ============ Remove BG API ============
 
 /**
  * 从 XHR Blob 响应中解析后端返回的 JSON 错误消息。
@@ -94,8 +165,6 @@ export function uploadAndRemoveBg(
     if (signal) {
       signal.addEventListener('abort', () => {
         xhr.abort();
-        // 不在此处 reject —— xhr.abort() 会触发 load 或 error 事件，
-        // 也可能不触发。直接用自定义 DOMException 确保只 reject 一次。
         reject(new DOMException('请求已取消', 'AbortError'));
       });
     }
@@ -104,6 +173,13 @@ export function uploadAndRemoveBg(
     xhr.open('POST', `${API_BASE}/remove-bg?_t=${Date.now()}`);
     xhr.responseType = 'blob';
     xhr.setRequestHeader('Cache-Control', 'no-cache');
+
+    // Phase 5: 若已登录，携带 JWT token
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+
     xhr.send(formData);
   });
 }

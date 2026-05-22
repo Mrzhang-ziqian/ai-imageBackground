@@ -1,6 +1,6 @@
 <template>
   <div class="app" @paste="onPaste">
-    <AppHeader />
+    <AppHeader @open-auth="authModalVisible = true" />
 
     <main class="main">
       <div class="container">
@@ -167,6 +167,9 @@
       @cancel="handleLargeImageCancel"
     />
   </div>
+    <!-- Phase 5: 鉴权弹窗 -->
+    <AuthModal :visible="authModalVisible" @close="authModalVisible = false" />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -183,6 +186,7 @@ import DownloadPanel from './components/DownloadPanel.vue';
 import HistoryPanel from './components/HistoryPanel.vue';
 import BatchPanel from './components/BatchPanel.vue';
 import LargeImageDialog from './components/LargeImageDialog.vue';
+import AuthModal from './components/AuthModal.vue';
 import { useBackgroundRemover } from './composables/useBackgroundRemover';
 import { useHistory } from './composables/useHistory';
 import { useBatchProcessor } from './composables/useBatchProcessor';
@@ -196,6 +200,9 @@ const remover = useBackgroundRemover();
 const history = useHistory();
 const batch = useBatchProcessor();
 const { toast: toastState, showToast } = useToast();
+
+// ---- 鉴权弹窗 ----
+const authModalVisible = ref(false);
 
 // ---- 视图模式 ----
 /** 'single' = 正常单图模式 | 'batch' = 批量面板 */
