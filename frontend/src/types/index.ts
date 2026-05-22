@@ -168,6 +168,8 @@ export interface HistoryEntry {
   resultDataUrl: string;
   dimensions: ImageDimensions;
   modelUsed: string;
+  /** SHA-256 哈希，用于去重（可选，兼容旧数据） */
+  fileHash?: string;
 }
 
 /** 处理历史的 localStorage key */

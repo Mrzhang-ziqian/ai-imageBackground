@@ -1,9 +1,9 @@
 """
 SQLAlchemy ORM models
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import Column, Integer, String, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Date, Boolean
 from sqlalchemy.sql import func
 
 from database import Base
@@ -22,6 +22,7 @@ class User(Base):
     plan = Column(String(20), default="free", server_default="'free'")   # free | pro | team
     quota_daily = Column(Integer, default=5, server_default="5")         # daily full-res quota
     quota_used  = Column(Integer, default=0, server_default="0")
+    quota_date  = Column(Date, nullable=True)                            # last quota usage date (for daily reset)
 
     created_at = Column(
         DateTime(timezone=True),

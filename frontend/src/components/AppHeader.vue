@@ -34,10 +34,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useAuth } from '@/composables/useAuth'
+import { useQuota } from '@/composables/useQuota'
 
 defineEmits<{ openAuth: [] }>()
 
-const { isLoggedIn, user, userPlan, quotaLeft, logout } = useAuth()
+const { isLoggedIn, user, userPlan, logout } = useAuth()
+const { quotaLeft, isExhausted } = useQuota()
 
 const planLabel = computed(() => {
   const map: Record<string, string> = { free: '免费', pro: 'Pro', team: 'Team' }

@@ -6,7 +6,6 @@
       <div class="container">
         <!-- ========== 批量模式：显示 BatchPanel ========== -->
         <template v-if="viewMode === 'batch'">
-          <!-- 返回按钮 -->
           <div class="back-row">
             <button class="btn-back-mode" @click="handleBackToUpload">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -22,57 +21,42 @@
           />
         </template>
 
-        <!-- ========== 正常流程（上传/预览/结果） ========== -->
+        <!-- ========== 正常流程：5 状态模型 ========== -->
         <template v-else>
           <Transition name="section-fade" mode="out-in">
-            <UploadZone
-              v-if="showUpload"
-              key="upload"
-              :validate-file="remover.validateFile"
-              @file-selected="handleFileSelected"
-              @files-selected="handleFilesSelected"
-              @validation-error="handleValidationError"
-            />
-            <div v-else key="result" class="result-wrapper">
-              <!-- 错误状态 -->
-              <div v-if="remover.processing.status === 'error'" class="error-card">
-                <div class="error-icon">
-                  <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                    <circle cx="20" cy="20" r="18" stroke="#EF4444" stroke-width="2" fill="#FEF2F2"/>
-                    <path d="M20 12v10M20 25v2" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"/>
+            <!-- IDLE：上传区 / 配额耗尽卡片 -->
+            <div v-if="viewState === 'idle'" key="idle">
+              <UploadZone
+                v-if="!quota.isExhausted.value"
+                :validate-file="remover.validateFile"
+                @file-selected="handleFileSelected"
+                @files-selected="handleFilesSelected"
+                @validation-error="handleValidationError"
+              />
+              <!-- 配额耗尽 -->
+              <div v-else class="quota-exhausted-card">
+                <div class="quota-exhausted-icon">
+                  <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                    <circle cx="24" cy="24" r="22" stroke="#F59E0B" stroke-width="2" fill="#FFFBEB"/>
+                    <path d="M24 14v14M24 30v2" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round"/>
                   </svg>
                 </div>
-                <div class="error-content">
-                  <h3 class="error-title">处理失败</h3>
-                  <p class="error-detail">{{ remover.processing.detail }}</p>
-                </div>
-                <div class="error-actions">
-                  <button class="btn-retry" @click="handleRetry">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M2 8a6 6 0 0 1 10.47-4M14 8a6 6 0 0 1-10.47 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                      <path d="M12 2v4h-4M4 14v-4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    重试
-                  </button>
-                  <button class="btn-new-upload" @click="handleReset">
-                    重新选择文件
-                  </button>
-                </div>
-                <div class="reset-row">
-                  <button class="btn-reset" @click="handleReset">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M23 4v6h-6"/>
-                      <path d="M1 20v-6h6"/>
-                      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-                    </svg>
-                    重新上传
-                  </button>
-                </div>
+                <h3 class="quota-exhausted-title">今日免费额度已用完</h3>
+                <p class="quota-exhausted-desc" v-if="!auth.isLoggedIn.value">
+                  免费试用 {{ quota.quotaDaily.value }} 次已用完，注册即享每日 5 次免费额度
+                </p>
+                <p class="quota-exhausted-desc" v-else>
+                  免费版每日 {{ quota.quotaDaily.value }} 次已用完，明天自动重置。升级 Pro 解锁无限使用
+                </p>
+                <button class="btn-upgrade" @click="authModalVisible = true">
+                  {{ auth.isLoggedIn.value ? '升级至 Pro' : '免费注册 / 登录' }}
+                </button>
               </div>
+            </div>
 
-              <!-- ========== 主体：左右两栏布局 ========== -->
-              <div v-else class="result-layout" :class="{ 'no-tools': !isDone }">
-                <!-- 左栏：预览区（粘性定位） -->
+            <!-- PROCESSING：进度预览 -->
+            <div v-else-if="viewState === 'processing'" key="processing" class="result-wrapper">
+              <div class="result-layout no-tools">
                 <div class="preview-col">
                   <PreviewGrid
                     :original-url="remover.originalUrl.value"
@@ -83,48 +67,46 @@
                     :model-used="remover.modelUsed.value"
                   />
                 </div>
+              </div>
+            </div>
 
-                <!-- 右栏：工具面板（独立滚动） -->
+            <!-- DONE：预览 + 工具面板 -->
+            <div v-else-if="viewState === 'done'" key="done" class="result-wrapper">
+              <div class="result-layout">
+                <div class="preview-col">
+                  <PreviewGrid
+                    :original-url="remover.originalUrl.value"
+                    :result-url="remover.resultUrl.value"
+                    :bg-color="remover.currentBgColor.value"
+                    :processing="remover.processing"
+                    :result-dimensions="remover.resultDimensions.value"
+                    :model-used="remover.modelUsed.value"
+                  />
+                </div>
                 <div class="tools-col">
-                  <!-- 背景颜色选择器 -->
                   <BackgroundColorPicker
-                    v-if="remover.processing.status === 'done'"
                     :model-value="remover.currentBgColor.value"
                     @update:model-value="handleBgColorChange"
                   />
-
-                  <!-- 背景模板选择器 -->
                   <BackgroundTemplatePicker
-                    v-if="remover.processing.status === 'done'"
                     :model-value="remover.currentTemplateId.value"
                     :subject-blob="remover.transparentBlob.value"
                     @update:model-value="handleTemplateChange"
                   />
-
-                  <!-- 边缘后期工具 (G05) -->
                   <EdgeToolsPanel
-                    v-if="remover.processing.status === 'done'"
                     :transparent-blob="remover.transparentBlob.value"
                     :original-url="remover.originalUrl.value"
                     @update:result-blob="handleEdgeUpdate"
                     @reset-edge="handleEdgeReset"
                     @toast="handleDownloadToast"
                   />
-
-                  <!-- 下载面板 -->
                   <DownloadPanel
-                    v-if="remover.processing.status === 'done'"
                     :blob="remover.resultBlob.value"
                     :transparent-blob="remover.transparentBlob.value"
                     :filename="remover.resultFilename.value"
                     @toast="handleDownloadToast"
                   />
-
-                  <!-- 重新上传 -->
-                  <div
-                    v-if="remover.processing.status === 'done'"
-                    class="reset-row"
-                  >
+                  <div class="reset-row">
                     <button class="btn-reset" @click="handleReset">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M23 4v6h-6"/>
@@ -136,18 +118,56 @@
                   </div>
                 </div>
               </div>
+            </div>
 
-              <!-- 处理历史（全宽） -->
-              <HistoryPanel
-                v-if="remover.processing.status !== 'error'"
-                :entries="history.entries.value"
-                :active-id="activeHistoryId"
-                @restore="handleHistoryRestore"
-                @remove="history.remove"
-                @clear="history.clearAll"
-              />
+            <!-- ERROR：错误卡片（根据错误类型显示不同按钮） -->
+            <div v-else key="error" class="result-wrapper">
+              <div class="error-card">
+                <div class="error-icon">
+                  <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                    <circle cx="20" cy="20" r="18" stroke="#EF4444" stroke-width="2" fill="#FEF2F2"/>
+                    <path d="M20 12v10M20 25v2" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"/>
+                  </svg>
+                </div>
+                <div class="error-content">
+                  <h3 class="error-title">处理失败</h3>
+                  <p class="error-detail">{{ remover.processing.detail }}</p>
+                </div>
+                <div class="error-actions">
+                  <template v-if="isQuotaError">
+                    <button class="btn-retry" @click="authModalVisible = true">
+                      登录解锁更多
+                    </button>
+                    <button class="btn-new-upload" @click="handleReset">
+                      返回上传
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button class="btn-retry" @click="handleRetry">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M2 8a6 6 0 0 1 10.47-4M14 8a6 6 0 0 1-10.47 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        <path d="M12 2v4h-4M4 14v-4h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      重试
+                    </button>
+                    <button class="btn-new-upload" @click="handleReset">
+                      重新选择文件
+                    </button>
+                  </template>
+                </div>
+              </div>
             </div>
           </Transition>
+
+          <!-- 处理历史：始终可见（解决"重新上传后历史消失"的问题） -->
+          <HistoryPanel
+            v-if="history.entries.value.length > 0"
+            :entries="history.entries.value"
+            :active-id="activeHistoryId"
+            @restore="handleHistoryRestore"
+            @remove="history.remove"
+            @clear="history.clearAll"
+          />
         </template>
       </div>
     </main>
@@ -155,7 +175,6 @@
     <AppFooter />
     <ToastMessage :toast="toastState" />
 
-    <!-- 大图尺寸提示对话框 -->
     <LargeImageDialog
       :visible="largeImageDialog.visible"
       :width="largeImageDialog.width"
@@ -166,7 +185,6 @@
       @original="handleLargeImageOriginal"
       @cancel="handleLargeImageCancel"
     />
-    <!-- Phase 5: 鉴权弹窗 -->
     <AuthModal :visible="authModalVisible" @close="authModalVisible = false" />
   </div>
 </template>
@@ -190,6 +208,8 @@ import { useBackgroundRemover } from './composables/useBackgroundRemover';
 import { useHistory } from './composables/useHistory';
 import { useBatchProcessor } from './composables/useBatchProcessor';
 import { useToast } from './composables/useToast';
+import { useQuota } from './composables/useQuota';
+import { useAuth } from './composables/useAuth';
 import type { BgColor, HistoryEntry } from './types';
 import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT } from './types';
 import { readImageDimensions, resizeImageClient, formatFileSize } from './utils/imageUtils';
@@ -199,6 +219,8 @@ const remover = useBackgroundRemover();
 const history = useHistory();
 const batch = useBatchProcessor();
 const { toast: toastState, showToast } = useToast();
+const auth = useAuth();
+const quota = useQuota();
 
 // ---- 鉴权弹窗 ----
 const authModalVisible = ref(false);
@@ -208,10 +230,19 @@ const authModalVisible = ref(false);
 const viewMode = ref<'single' | 'batch'>('single');
 
 // ---- 计算属性 ----
-const showUpload = computed(() => viewMode.value === 'single' && remover.processing.status === 'idle');
+/** 页面视图状态（驱动模板切换） */
+type ViewState = 'idle' | 'processing' | 'done' | 'error';
 
-/** 是否已完成处理（有结果可操作） */
-const isDone = computed(() => remover.processing.status === 'done');
+const viewState = computed<ViewState>(() => {
+  const status = remover.processing.status;
+  if (status === 'idle') return 'idle';
+  if (status === 'uploading' || status === 'processing') return 'processing';
+  if (status === 'done') return 'done';
+  return 'error';
+});
+
+/** 是否是配额耗尽类错误（区分 429 和其他失败） */
+const isQuotaError = computed(() => /已用完|匿名试用/.test(remover.processing.detail));
 
 /** 当前活跃的历史条目 ID（用于高亮） */
 const activeHistoryId = ref<string>('');
@@ -230,6 +261,17 @@ const largeImageDialog = ref({
 // ---- 事件处理 ----
 
 async function handleFileSelected(file: File): Promise<void> {
+  // 0. 配额检查（优先阻断，避免无意义上传）
+  if (quota.isExhausted.value) {
+    if (!auth.isLoggedIn.value) {
+      showToast({ message: '免费试用次数已用完，请登录获取每日 5 次额度', type: 'error' });
+      authModalVisible.value = true;
+    } else {
+      showToast({ message: `今日免费额度已用完 (${quota.quotaUsed.value}/${quota.quotaDaily.value})`, type: 'error' });
+    }
+    return;
+  }
+
   // 1. 同步校验（格式、大小）
   const validation = remover.validateFile(file);
   if (!validation.valid) {
@@ -288,6 +330,7 @@ async function doProcessFile(file: File): Promise<void> {
     return;
   }
   if (remover.processing.status === 'done') {
+    await quota.afterSuccessfulRequest();
     showToast({ message: '背景移除成功！', type: 'success' });
     await saveToHistory(file);
   }
@@ -425,14 +468,18 @@ async function saveToHistory(originalFile: File): Promise<void> {
   }
 }
 
-function handleRetry(): void {
-  remover.retryCurrentFile().then((error) => {
-    if (error) {
-      showToast({ message: error, type: 'error' });
-    } else if (remover.processing.status === 'done') {
-      showToast({ message: '重试成功！', type: 'success' });
-    }
-  });
+async function handleRetry(): Promise<void> {
+  const file = remover.currentFile.value;
+  const error = await remover.retryCurrentFile();
+  if (error) {
+    showToast({ message: error, type: 'error' });
+    return;
+  }
+  if (remover.processing.status === 'done') {
+    await quota.afterSuccessfulRequest();
+    if (file) await saveToHistory(file);
+    showToast({ message: '重试成功！', type: 'success' });
+  }
 }
 
 function handleValidationError(error: string): void {
@@ -641,6 +688,60 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
 .btn-new-upload:hover {
   background: #f9fafb;
   border-color: #9ca3af;
+}
+
+/* ---- 配额耗尽卡片 ---- */
+.quota-exhausted-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border: 1px solid #fde68a;
+  border-radius: 16px;
+  padding: 32px 24px;
+  margin-bottom: 24px;
+  text-align: center;
+  max-width: 520px;
+  margin-inline: auto;
+}
+
+.quota-exhausted-icon {
+  flex-shrink: 0;
+}
+
+.quota-exhausted-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0;
+}
+
+.quota-exhausted-desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.5;
+  max-width: 360px;
+}
+
+.btn-upgrade {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 24px;
+  border: none;
+  border-radius: 10px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-upgrade:hover {
+  background: #4f46e5;
 }
 
 /* ---- 重新上传按钮 ---- */

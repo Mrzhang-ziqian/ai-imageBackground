@@ -1,6 +1,7 @@
 import { ref, readonly } from 'vue';
 import type { HistoryEntry } from '@/types';
 import { HISTORY_KEY, MAX_HISTORY } from '@/types';
+import { computeSHA256 } from '@/utils/crypto';
 
 /**
  * 生成压缩缩略图 (base64 data URL)。
@@ -75,7 +76,7 @@ export function useHistory() {
     }
   }
 
-  // ---- 添加条目 ----
+  // ---- 添加条目（含内容哈希去重） ----
   async function add(params: {
     filename: string;
     originalBlob: Blob;
@@ -85,9 +86,15 @@ export function useHistory() {
   }): Promise<void> {
     const { filename, originalBlob, resultBlob, dimensions, modelUsed } = params;
 
-    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-
     try {
+      // 计算原图 SHA-256，用于去重
+      const fileHash = await computeSHA256(originalBlob);
+
+      // 检查是否已有相同哈希 + 相同模型的记录
+      const dupIndex = entries.value.findIndex(
+        (e) => e.fileHash === fileHash && e.modelUsed === modelUsed,
+      );
+
       const [originalThumb, resultThumb] = await Promise.all([
         generateThumbnail(originalBlob, 120, 'jpeg'),
         generateThumbnail(resultBlob, 120, 'png'),
@@ -101,22 +108,34 @@ export function useHistory() {
         reader.readAsDataURL(resultBlob);
       });
 
-      const entry: HistoryEntry = {
-        id,
-        filename,
-        timestamp: Date.now(),
-        originalThumb,
-        resultThumb,
-        resultDataUrl,
-        dimensions,
-        modelUsed,
-      };
+      if (dupIndex !== -1) {
+        // 已有相同记录 → 移到顶部并更新时间戳
+        const [dup] = entries.value.splice(dupIndex, 1);
+        dup.timestamp = Date.now();
+        dup.originalThumb = originalThumb;
+        dup.resultThumb = resultThumb;
+        dup.resultDataUrl = resultDataUrl;
+        entries.value.unshift(dup);
+      } else {
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const entry: HistoryEntry = {
+          id,
+          filename,
+          timestamp: Date.now(),
+          originalThumb,
+          resultThumb,
+          resultDataUrl,
+          dimensions,
+          modelUsed,
+          fileHash,
+        };
 
-      entries.value.unshift(entry);
+        entries.value.unshift(entry);
 
-      // 超过上限则裁剪
-      if (entries.value.length > MAX_HISTORY) {
-        entries.value = entries.value.slice(0, MAX_HISTORY);
+        // 超过上限则裁剪
+        if (entries.value.length > MAX_HISTORY) {
+          entries.value = entries.value.slice(0, MAX_HISTORY);
+        }
       }
 
       persist();

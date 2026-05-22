@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from PIL import Image
@@ -24,7 +24,7 @@ from rembg import remove, new_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db
-from auth import router as auth_router, get_current_user
+from auth import router as auth_router, get_current_user, check_and_reset_quota, _check_anon_rate_limit
 from models import User
 
 # ---------- 日志 ----------
@@ -192,6 +192,7 @@ async def http_exception_handler(request, exc: HTTPException):
 # ---------- 背景移除 ----------
 @app.post("/remove-bg")
 async def remove_background(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User | None = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -200,19 +201,29 @@ async def remove_background(
     接收图片文件，移除背景后返回透明 PNG。
     AI 推理在线程池中执行，不阻塞事件循环，支持并发。
 
-    鉴权（可选）：
-    - 未登录：无限制（Phase 5 暂不限制，Phase 6 将收紧）
-    - 已登录（free）：每日有限配额
+    鉴权 & 配额：
+    - 匿名用户：IP + 日期限频（每天 10 次），超限返回 429
+    - 已登录（free）：每日有限配额（5 次），日期变更自动重置
     - 已登录（pro/team）：无限制
     """
-    # --- 1. 校验文件类型 ---
+    # --- 0. 获取客户端 IP ---
+    client_ip = request.client.host if request.client else "unknown"
+
+    # --- 1. 匿名用户 IP 频率限制 ---
+    if current_user is None:
+        _check_anon_rate_limit(client_ip)
+
+    # --- 2. 配额日重置（已登录免费用户）---
+    if current_user and current_user.plan == "free":
+        await check_and_reset_quota(current_user, db)
+    # --- 3. 校验文件类型 ---
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"不支持的文件类型: {file.content_type}，仅支持 PNG、JPEG、WebP",
         )
 
-    # --- 2. 读取文件内容 ---
+    # --- 4. 读取文件内容 ---
     try:
         contents = await file.read()
     except Exception as e:
@@ -226,7 +237,7 @@ async def remove_background(
             detail=f"文件过大 (最大 20MB)，当前大小: {len(contents) / 1024 / 1024:.1f}MB",
         )
 
-    # --- 3. 解析图片 ---
+    # --- 5. 解析图片 ---
     try:
         image = Image.open(io.BytesIO(contents))
         image.load()  # 强制解码，提前暴露损坏图片
@@ -241,7 +252,7 @@ async def remove_background(
             detail=f"图片尺寸过大 (最大 {MAX_IMAGE_DIM}px)，当前: {image.width}x{image.height}",
         )
 
-    # --- 3.2 配额检查（已登录免费用户） ---
+    # --- 5.2 配额检查（已登录免费用户，已在上面重置过） ---
     if current_user and current_user.plan == "free":
         if current_user.quota_used >= current_user.quota_daily:
             raise HTTPException(

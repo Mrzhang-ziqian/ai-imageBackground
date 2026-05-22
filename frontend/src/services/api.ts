@@ -17,6 +17,14 @@ class AuthApiError extends Error {
   }
 }
 
+/** 配额耗尽错误（HTTP 429） */
+export class QuotaExhaustedError extends Error {
+  constructor(message?: string) {
+    super(message || '配额已用完');
+    this.name = 'QuotaExhaustedError';
+  }
+}
+
 async function authFetch(url: string, options: RequestInit = {}): Promise<any> {
   const res = await fetch(url, {
     ...options,
@@ -125,6 +133,19 @@ export function uploadAndRemoveBg(
     });
 
     xhr.addEventListener('load', async () => {
+      // 429 — 配额耗尽
+      if (xhr.status === 429) {
+        let errMsg = '请求次数已用完';
+        try {
+          const errorBlob = xhr.response as Blob;
+          const text = await errorBlob.text();
+          const err = JSON.parse(text);
+          errMsg = err.detail || errMsg;
+        } catch { /* ignore */ }
+        reject(new QuotaExhaustedError(errMsg));
+        return;
+      }
+
       if (xhr.status >= 200 && xhr.status < 300) {
         const blob = xhr.response as Blob;
         const filename = `removed_bg_${file.name.replace(/\.[^.]+$/, '')}.png`;
