@@ -67,9 +67,12 @@ export const authApi = {
   },
 
   async getMe(token: string): Promise<AuthTokenResponse['user']> {
-    // fetch + Authorization header
-    const res = await fetch(`${API_BASE}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+    // fetch + Authorization header + 防缓存
+    const res = await fetch(`${API_BASE}/auth/me?_t=${Date.now()}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Cache-Control': 'no-cache',
+      },
     });
     if (!res.ok) {
       let msg = `鉴权失败 (${res.status})`;

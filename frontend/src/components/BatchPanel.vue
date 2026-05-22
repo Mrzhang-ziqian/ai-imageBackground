@@ -151,12 +151,12 @@
             </svg>
             全部下载 ({{ batch.doneCount.value }})
           </button>
-          <button class="btn-back" @click="batch.clearItems()">
+          <button class="btn-back" @click="$emit('reset')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
               <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
             </svg>
-            重新上传
+            上传图片
           </button>
         </div>
       </div>
@@ -233,6 +233,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'view-detail', itemId: string): void;
   (e: 'toast', payload: { message: string; type: 'success' | 'error' }): void;
+  (e: 'reset'): void;
 }>();
 
 // 结果图 URL 缓存

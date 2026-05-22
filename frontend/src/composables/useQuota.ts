@@ -16,7 +16,7 @@ export function useQuota() {
   /** 已使用次数（仅登录用户有效） */
   const quotaUsed = computed(() => {
     if (isLoggedIn.value && user.value) {
-      return user.value.quota_used;
+      return user.value.quota_used ?? 0;
     }
     return 0;
   });
@@ -24,7 +24,7 @@ export function useQuota() {
   /** 每日总额度（仅登录用户有效） */
   const quotaDaily = computed(() => {
     if (isLoggedIn.value && user.value) {
-      return user.value.quota_daily;
+      return user.value.quota_daily ?? 5;
     }
     return 5;
   });

@@ -7,6 +7,16 @@ import { ref, computed } from 'vue'
 import { authApi } from '@/services/api'
 import type { UserInfo } from '@/types'
 
+/** 后端鉴权 API 错误（含 HTTP 状态码） */
+class AuthApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'AuthApiError'
+    this.status = status
+  }
+}
+
 // ---------- State ----------
 const token = ref<string | null>(localStorage.getItem('auth_token'))
 const user = ref<UserInfo | null>(null)
@@ -18,7 +28,9 @@ const isLoggedIn = computed(() => !!token.value && !!user.value)
 const userPlan = computed(() => user.value?.plan ?? 'free')
 const quotaLeft = computed(() => {
   if (!user.value) return Infinity
-  return Math.max(0, user.value.quota_daily - user.value.quota_used)
+  const daily = user.value.quota_daily ?? 5
+  const used = user.value.quota_used ?? 0
+  return Math.max(0, daily - used)
 })
 
 // ---------- Actions ----------
@@ -29,9 +41,11 @@ async function fetchMe(): Promise<void> {
   error.value = null
   try {
     user.value = await authApi.getMe(token.value)
-  } catch {
-    // Token expired or invalid
-    logout()
+  } catch (e) {
+    // 仅在真正的鉴权失败（401/403）时登出；网络抖动/超时不登出
+    if (e instanceof AuthApiError && (e.status === 401 || e.status === 403)) {
+      logout()
+    }
   } finally {
     loading.value = false
   }

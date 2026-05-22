@@ -22,6 +22,7 @@
             :batch="batch"
             @view-detail="handleBatchViewDetail"
             @toast="handleDownloadToast"
+            @reset="handleBatchReset"
           />
         </template>
 
@@ -82,6 +83,12 @@
                     :processing="remover.processing"
                     :result-dimensions="remover.resultDimensions.value"
                     :model-used="remover.modelUsed.value"
+                  />
+                  <!-- 底部胶片条：当前会话多图切换 -->
+                  <SessionFilmstrip
+                    :items="sessionItems"
+                    :active-id="activeSessionId"
+                    @select="handleSessionSelect"
                   />
                 </div>
                 <div class="tools-col">
@@ -176,6 +183,19 @@
     <AppFooter />
     <ToastMessage :toast="toastState" />
 
+    <!-- 重新上传确认弹窗 -->
+    <ConfirmResetModal
+      :visible="resetModalVisible"
+      :is-exhausted="quota.isExhausted.value"
+      :session-count="sessionItems.length"
+      :quota-used="quota.quotaUsed.value"
+      :quota-daily="quota.quotaDaily.value"
+      :quota-left="quota.quotaLeft.value"
+      @confirm="handleResetConfirm"
+      @cancel="handleResetCancel"
+      @upgrade="handleResetUpgrade"
+    />
+
     <LargeImageDialog
       :visible="largeImageDialog.visible"
       :width="largeImageDialog.width"
@@ -193,7 +213,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AppHeader from './components/AppHeader.vue';
 import AppFooter from './components/AppFooter.vue';
 import ToastMessage from './components/ToastMessage.vue';
@@ -208,6 +228,8 @@ import BatchPanel from './components/BatchPanel.vue';
 import LargeImageDialog from './components/LargeImageDialog.vue';
 import AuthModal from './components/AuthModal.vue';
 import LandingPage from './components/LandingPage.vue';
+import ConfirmResetModal from './components/ConfirmResetModal.vue';
+import SessionFilmstrip from './components/SessionFilmstrip.vue';
 import { useBackgroundRemover } from './composables/useBackgroundRemover';
 import { useHistory } from './composables/useHistory';
 import { useBatchProcessor } from './composables/useBatchProcessor';
@@ -215,7 +237,7 @@ import { useToast } from './composables/useToast';
 import { useQuota } from './composables/useQuota';
 import { useAuth } from './composables/useAuth';
 import { historyApi } from './services/api';
-import type { BgColor, HistoryEntry } from './types';
+import type { BgColor, HistoryEntry, SessionItem } from './types';
 import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT } from './types';
 import { readImageDimensions, resizeImageClient, formatFileSize } from './utils/imageUtils';
 
@@ -234,6 +256,24 @@ const authModalVisible = ref(false);
 /** 'single' = 正常单图模式 | 'batch' = 批量面板 */
 const viewMode = ref<'single' | 'batch'>('single');
 
+// ---- 批量处理完成 → 自动刷新历史和配额 ----
+watch(() => batch.allDone.value, (done) => {
+  if (done) {
+    history.load();
+    quota.syncFromServer();
+  }
+});
+
+// ---- 批量处理每完成一项 → 同步配额（确保右上角实时更新） ----
+watch(
+  () => batch.doneCount.value + batch.errorCount.value,
+  (newVal, oldVal) => {
+    if (newVal > oldVal) {
+      quota.syncFromServer();
+    }
+  },
+);
+
 // ---- 计算属性 ----
 /** 页面视图状态（驱动模板切换） */
 type ViewState = 'idle' | 'processing' | 'done' | 'error';
@@ -251,6 +291,133 @@ const isQuotaError = computed(() => /已用完/.test(remover.processing.detail))
 
 /** 当前活跃的历史条目 ID（用于高亮） */
 const activeHistoryId = ref<number | null>(null);
+
+// ---- 当前会话（底部胶片条） ----
+/** 本次会话中处理的所有图片 */
+const sessionItems = ref<SessionItem[]>([]);
+/** 当前活跃的会话项 ID */
+const activeSessionId = ref<string | null>(null);
+/** 会话项 ID 计数器 */
+let sessionIdCounter = 0;
+
+// ---- 重新上传确认弹窗 ----
+const resetModalVisible = ref(false);
+
+/**
+ * 将当前 remover 状态捕获为一个 SessionItem。
+ * 仅当 processing.status === 'done' 时调用。
+ */
+async function captureSessionItem(): Promise<void> {
+  const blob = remover.resultBlob.value;
+  const file = remover.currentFile.value;
+  if (!blob || !remover.resultUrl.value) return;
+
+  // 读取结果 Blob 为 Data URL（用于快速恢复）
+  const resultDataUrl = await blobToDataUrl(blob);
+  // 生成原图缩略图 Data URL
+  const originalThumb = file ? await createThumbnail(file) : resultDataUrl;
+
+  // 从结果 Blob 生成小缩略图 Data URL（避免 Object URL 被回收后断裂）
+  const thumbDataUrl = await createBlobThumbnail(blob, 80);
+
+  const id = `session_${++sessionIdCounter}`;
+  const item: SessionItem = {
+    id,
+    filename: remover.resultFilename.value,
+    originalThumb,
+    resultDataUrl,
+    thumbUrl: thumbDataUrl,
+    dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
+    modelUsed: remover.modelUsed.value,
+    resultBlob: blob,
+    transparentBlob: remover.transparentBlob.value ?? blob,
+  };
+
+  sessionItems.value.push(item);
+  activeSessionId.value = id;
+}
+
+/** 从 File 生成缩略图 Data URL（最长边 100px，JPEG 质量 0.7） */
+function createThumbnail(file: File, maxDim: number = 100): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      const scale = maxDim / Math.max(img.width, img.height);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve('');
+    };
+    img.src = url;
+  });
+}
+
+/** 从 Blob 生成缩略图 Data URL（用于胶片条，避免 Object URL 被回收） */
+function createBlobThumbnail(blob: Blob, maxDim: number = 80): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      const scale = maxDim / Math.max(img.width, img.height);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.6));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve('');
+    };
+    img.src = url;
+  });
+}
+
+/** Blob → Data URL */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Blob 读取失败'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** 切换胶片条中的会话项 */
+async function handleSessionSelect(id: string): Promise<void> {
+  if (id === activeSessionId.value) return;
+
+  // 保存当前项的最新结果状态
+  const currentItem = sessionItems.value.find((s) => s.id === activeSessionId.value);
+  if (currentItem && remover.resultBlob.value) {
+    currentItem.resultDataUrl = await blobToDataUrl(remover.resultBlob.value);
+    currentItem.transparentBlob = remover.transparentBlob.value ?? remover.resultBlob.value;
+  }
+
+  const item = sessionItems.value.find((s) => s.id === id);
+  if (!item) return;
+
+  remover.restoreFromHistory({
+    originalDataUrl: item.originalThumb,
+    resultDataUrl: item.resultDataUrl,
+    filename: item.filename,
+    dimensions: item.dimensions,
+    modelUsed: item.modelUsed,
+  });
+
+  activeSessionId.value = id;
+  activeHistoryId.value = null;
+}
 
 // ---- 大图提示对话框状态 ----
 const largeImageDialog = ref({
@@ -334,6 +501,8 @@ async function doProcessFile(file: File): Promise<void> {
     showToast({ message: '背景移除成功！', type: 'success' });
     // 后端已自动保存历史，前端重新加载列表
     await history.load();
+    // 捕获到当前会话（用于底部胶片条）
+    await captureSessionItem();
   }
 }
 
@@ -400,6 +569,9 @@ function handleBatchViewDetail(itemId: string): void {
   // 由于 transparentBlob 等是 shallowRef，我们需要内部驱动
   // 我们用 URL 设置方式
   viewMode.value = 'single';
+  // 刷新历史（批量处理已保存到后端）
+  history.load();
+  quota.syncFromServer();
   // 延迟一下等视图切换完成
   setTimeout(() => {
     loadBatchResultIntoRemover(data);
@@ -443,10 +615,38 @@ function loadBatchResultIntoRemover(data: {
 }
 
 /** 从批量模式返回上传界面 */
-function handleBackToUpload(): void {
+async function handleBackToUpload(): Promise<void> {
+  // 处理中 → 只切换视图，不销毁（文件还在后台上传）
+  if (batch.isProcessing.value) {
+    viewMode.value = 'single';
+    remover.reset();
+    showToast({ message: '文件仍在后台处理中，处理完成后可在历史记录查看结果', type: 'success' });
+    return;
+  }
+  // 批量完成 → 保留结果，仅切换视图
+  if (batch.phase.value === 'done') {
+    viewMode.value = 'single';
+    remover.reset();
+    await Promise.all([
+      history.load(),
+      quota.syncFromServer(),
+    ]);
+    return;
+  }
+  // 入口阶段 → 安全销毁
   batch.destroy();
   viewMode.value = 'single';
   remover.reset();
+}
+
+/** 批量面板点击"上传图片"按钮 → 清空并回到首页 */
+function handleBatchReset(): void {
+  batch.destroy();
+  viewMode.value = 'single';
+  remover.reset();
+  // 刷新历史
+  history.load();
+  quota.syncFromServer();
 }
 
 async function handleRetry(): Promise<void> {
@@ -459,6 +659,7 @@ async function handleRetry(): Promise<void> {
   if (remover.processing.status === 'done') {
     await quota.afterSuccessfulRequest();
     await history.load();
+    await captureSessionItem();
     showToast({ message: '重试成功！', type: 'success' });
   }
 }
@@ -496,9 +697,39 @@ function handleEdgeReset(): void {
 }
 
 function handleReset(): void {
+  // Pro 用户或配额已耗尽 → 直接清空（无需确认弹窗）
+  if (auth.userPlan.value === 'pro' || quota.isExhausted.value) {
+    doReset();
+    return;
+  }
+  resetModalVisible.value = true;
+}
+
+/** 实际执行清空操作 */
+function doReset(): void {
   remover.reset();
   activeHistoryId.value = null;
+  activeSessionId.value = null;
+  sessionItems.value = [];
   viewMode.value = 'single';
+}
+
+/** 弹窗：确认重新上传 */
+function handleResetConfirm(): void {
+  resetModalVisible.value = false;
+  doReset();
+  showToast({ message: '已清空，可以重新上传了', type: 'success' });
+}
+
+/** 弹窗：取消 */
+function handleResetCancel(): void {
+  resetModalVisible.value = false;
+}
+
+/** 弹窗：升级 Pro */
+function handleResetUpgrade(): void {
+  resetModalVisible.value = false;
+  showToast({ message: 'Pro 计划即将上线，敬请期待！', type: 'success' });
 }
 
 async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
@@ -525,6 +756,7 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
       modelUsed: entry.modelUsed,
     });
     activeHistoryId.value = entry.id;
+    activeSessionId.value = null; // 清除胶片条选中态（历史恢复不属于当前会话）
     showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
   } catch (err) {
     showToast({

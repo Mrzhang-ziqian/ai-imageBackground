@@ -155,6 +155,25 @@ export interface RemoveBgResult {
   modelUsed?: string;
 }
 
+/** 当前会话项（前端内存，不持久化） */
+export interface SessionItem {
+  id: string;
+  filename: string;
+  /** 原图缩略图 (Data URL, JPEG, ~100px) — 用于 PreviewGrid 显示和恢复 */
+  originalThumb: string;
+  /** 结果 Data URL（PNG 透明底，用于快速恢复） */
+  resultDataUrl: string;
+  /** 缩略图 Object URL（仅用于胶片条展示） */
+  thumbUrl: string;
+  /** 图片尺寸 */
+  dimensions: ImageDimensions;
+  /** AI 模型名 */
+  modelUsed: string;
+  /** 保留 Blob 引用，供下载/工具使用 */
+  resultBlob: Blob;
+  transparentBlob: Blob;
+}
+
 /** 处理历史记录项（来自后端 /history API） */
 export interface HistoryEntry {
   id: number;
