@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import init_db, get_db
 from auth import router as auth_router, require_user, check_and_reset_quota
 from models import User
+from history import router as history_router, save_history_entry, save_history_entry_blocked
 
 # ---------- 日志 ----------
 logging.basicConfig(
@@ -63,6 +64,9 @@ app.add_middleware(
 
 # 注册鉴权路由
 app.include_router(auth_router)
+
+# 注册历史记录路由
+app.include_router(history_router)
 
 # ---------- 常量 ----------
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
@@ -247,6 +251,15 @@ async def remove_background(
     # --- 4.2 配额检查（已登录免费用户，已在上面重置过） ---
     if current_user.plan == "free":
         if current_user.quota_used >= current_user.quota_daily:
+            # 保存被阻塞的记录（原图信息），让用户刷新后仍能看到
+            await save_history_entry_blocked(
+                user=current_user,
+                db=db,
+                original_bytes=contents,
+                filename=file.filename or "image.png",
+                width=image.width,
+                height=image.height,
+            )
             raise HTTPException(
                 status_code=429,
                 detail=f"今日免费配额已用完 ({current_user.quota_used}/{current_user.quota_daily})，请升级至 Pro 版",
@@ -351,6 +364,18 @@ async def remove_background(
         logger.info(
             f"用户配额更新: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
         )
+
+    # --- 7.6 自动保存处理历史 ---
+    result_bytes = output.getvalue()
+    await save_history_entry(
+        user=current_user,
+        db=db,
+        original_bytes=contents,
+        result_bytes=result_bytes,
+        result_image=final_result,
+        filename=file.filename or "image.png",
+        model_label=model_label,
+    )
 
     # 安全文件名：仅保留 ASCII 安全字符（字母数字、中文、下划线、连字符、点）
     original_stem = Path(file.filename or "image").stem

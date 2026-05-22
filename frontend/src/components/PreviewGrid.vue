@@ -40,7 +40,23 @@
       <div class="preview-card">
         <div class="preview-label">原图</div>
         <div class="preview-box">
-          <img v-if="originalUrl" :src="originalUrl" alt="原图" />
+          <div v-if="imgState.originalLoading" class="shimmer-box" />
+          <img
+            v-if="originalUrl"
+            :src="originalUrl"
+            alt="原图"
+            @load="onLoad('original')"
+            @error="onError('original')"
+            :class="{ loaded: !imgState.originalLoading && !imgState.originalError }"
+          />
+          <div v-if="imgState.originalError" class="broken-box">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+            </svg>
+            <span class="broken-text">图片加载失败</span>
+          </div>
         </div>
       </div>
 
@@ -50,7 +66,23 @@
           class="preview-box"
           :style="resultBoxStyle"
         >
-          <img v-if="resultUrl" :src="resultUrl" alt="处理结果" />
+          <div v-if="imgState.resultLoading" class="shimmer-box" />
+          <img
+            v-if="resultUrl"
+            :src="resultUrl"
+            alt="处理结果"
+            @load="onLoad('result')"
+            @error="onError('result')"
+            :class="{ loaded: !imgState.resultLoading && !imgState.resultError }"
+          />
+          <div v-if="imgState.resultError" class="broken-box">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+            </svg>
+            <span class="broken-text">图片加载失败</span>
+          </div>
           <ProgressOverlay
             :visible="processing.status === 'uploading' || processing.status === 'processing'"
             :progress="processing.progress"
@@ -79,7 +111,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, reactive, watch } from 'vue';
 import type { ProcessingState, BgColor, ImageDimensions } from '@/types';
 import ProgressOverlay from './ProgressOverlay.vue';
 import CompareSlider from './CompareSlider.vue';
@@ -110,6 +142,41 @@ const resultBoxStyle = computed(() => {
   }
   return {};
 });
+
+// ---- 图片加载状态 ----
+interface ImgLoadingState {
+  originalLoading: boolean;
+  resultLoading: boolean;
+  originalError: boolean;
+  resultError: boolean;
+}
+const imgState = reactive<ImgLoadingState>({
+  originalLoading: false,
+  resultLoading: false,
+  originalError: false,
+  resultError: false,
+});
+
+// 监听 URL 变化重置状态
+watch(
+  () => [props.originalUrl, props.resultUrl],
+  () => {
+    imgState.originalLoading = !!props.originalUrl;
+    imgState.resultLoading = !!props.resultUrl;
+    imgState.originalError = false;
+    imgState.resultError = false;
+  },
+  { immediate: true }
+);
+
+function onLoad(type: 'original' | 'result') {
+  if (type === 'original') { imgState.originalLoading = false; imgState.originalError = false; }
+  else { imgState.resultLoading = false; imgState.resultError = false; }
+}
+function onError(type: 'original' | 'result') {
+  if (type === 'original') { imgState.originalLoading = false; imgState.originalError = true; }
+  else { imgState.resultLoading = false; imgState.resultError = true; }
+}
 </script>
 
 <style scoped>
@@ -243,5 +310,45 @@ const resultBoxStyle = computed(() => {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.preview-box img.loaded {
+  opacity: 1;
+}
+
+/* ---- shimmer 流光骨架 ---- */
+.shimmer-box {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #f3f4f6 0%, #e5e7eb 40%, #f3f4f6 80%);
+  background-size: 200% 100%;
+  animation: shimmer-slide 1.6s ease-in-out infinite;
+  z-index: 2;
+}
+
+@keyframes shimmer-slide {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---- 加载失败占位 ---- */
+.broken-box {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #d1d5db;
+  background: #f9fafb;
+}
+
+.broken-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: #9ca3af;
 }
 </style>

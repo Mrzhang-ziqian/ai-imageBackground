@@ -214,18 +214,15 @@ import { useBatchProcessor } from './composables/useBatchProcessor';
 import { useToast } from './composables/useToast';
 import { useQuota } from './composables/useQuota';
 import { useAuth } from './composables/useAuth';
+import { historyApi } from './services/api';
 import type { BgColor, HistoryEntry } from './types';
-import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT, getHistoryKey } from './types';
+import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT } from './types';
 import { readImageDimensions, resizeImageClient, formatFileSize } from './utils/imageUtils';
 
 // ---- 组合式函数 ----
 const remover = useBackgroundRemover();
 const auth = useAuth();
-
-/** 历史记录按用户 ID 隔离：每个账号独立 localStorage 分区 */
-const historyStorageKey = computed(() => getHistoryKey(auth.user.value?.id));
-const history = useHistory(historyStorageKey);
-
+const history = useHistory();
 const batch = useBatchProcessor();
 const { toast: toastState, showToast } = useToast();
 const quota = useQuota();
@@ -253,7 +250,7 @@ const viewState = computed<ViewState>(() => {
 const isQuotaError = computed(() => /已用完/.test(remover.processing.detail));
 
 /** 当前活跃的历史条目 ID（用于高亮） */
-const activeHistoryId = ref<string>('');
+const activeHistoryId = ref<number | null>(null);
 
 // ---- 大图提示对话框状态 ----
 const largeImageDialog = ref({
@@ -335,7 +332,8 @@ async function doProcessFile(file: File): Promise<void> {
   if (remover.processing.status === 'done') {
     await quota.afterSuccessfulRequest();
     showToast({ message: '背景移除成功！', type: 'success' });
-    await saveToHistory(file);
+    // 后端已自动保存历史，前端重新加载列表
+    await history.load();
   }
 }
 
@@ -451,26 +449,6 @@ function handleBackToUpload(): void {
   remover.reset();
 }
 
-/** 保存当前结果到历史 */
-async function saveToHistory(originalFile: File): Promise<void> {
-  const tBlob = remover.transparentBlob.value;
-  const dims = remover.resultDimensions.value;
-  if (!tBlob || !dims) return;
-
-  await history.add({
-    filename: originalFile.name,
-    originalBlob: originalFile,
-    resultBlob: tBlob,
-    dimensions: dims,
-    modelUsed: remover.modelUsed.value || '',
-  });
-
-  // 设置活跃 ID（第一条即为刚添加的）
-  if (history.entries.value.length > 0) {
-    activeHistoryId.value = history.entries.value[0].id;
-  }
-}
-
 async function handleRetry(): Promise<void> {
   const file = remover.currentFile.value;
   const error = await remover.retryCurrentFile();
@@ -480,7 +458,7 @@ async function handleRetry(): Promise<void> {
   }
   if (remover.processing.status === 'done') {
     await quota.afterSuccessfulRequest();
-    if (file) await saveToHistory(file);
+    await history.load();
     showToast({ message: '重试成功！', type: 'success' });
   }
 }
@@ -519,20 +497,41 @@ function handleEdgeReset(): void {
 
 function handleReset(): void {
   remover.reset();
-  activeHistoryId.value = '';
+  activeHistoryId.value = null;
   viewMode.value = 'single';
 }
 
-function handleHistoryRestore(entry: HistoryEntry): void {
-  remover.restoreFromHistory({
-    originalDataUrl: entry.originalThumb,
-    resultDataUrl: entry.resultDataUrl,
-    filename: entry.filename,
-    dimensions: entry.dimensions,
-    modelUsed: entry.modelUsed,
-  });
-  activeHistoryId.value = entry.id;
-  showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
+async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
+  // 被配额拒绝的记录没有结果，不可恢复
+  if (entry.status === 'blocked') return;
+
+  try {
+    // 从 API 获取结果原图 Blob
+    const resultBlob = await historyApi.getResult(entry.id);
+
+    // 转为 data URL（restoreFromHistory 要求 data URL）
+    const resultDataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('读取结果失败'));
+      reader.readAsDataURL(resultBlob);
+    });
+
+    remover.restoreFromHistory({
+      originalDataUrl: entry.originalThumb,
+      resultDataUrl,
+      filename: entry.filename,
+      dimensions: { width: entry.width, height: entry.height },
+      modelUsed: entry.modelUsed,
+    });
+    activeHistoryId.value = entry.id;
+    showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
+  } catch (err) {
+    showToast({
+      message: err instanceof Error ? err.message : '加载历史记录失败',
+      type: 'error',
+    });
+  }
 }
 
 // ---- 全局粘贴上传 ----

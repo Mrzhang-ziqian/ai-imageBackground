@@ -155,28 +155,27 @@ export interface RemoveBgResult {
   modelUsed?: string;
 }
 
-/** 处理历史记录项 */
+/** 处理历史记录项（来自后端 /history API） */
 export interface HistoryEntry {
-  id: string;
+  id: number;
   filename: string;
   timestamp: number;
   /** 原图缩略图 (base64 data URL, JPEG 压缩) */
   originalThumb: string;
-  /** 结果缩略图 (base64 data URL, PNG) */
+  /** 结果缩略图 (base64 data URL, PNG); blocked 状态时为空字符串 */
   resultThumb: string;
-  /** 透明结果大图 (base64 data URL, PNG) — 用于恢复 */
-  resultDataUrl: string;
-  dimensions: ImageDimensions;
+  /** 图片原始尺寸 */
+  width: number;
+  height: number;
   modelUsed: string;
-  /** SHA-256 哈希，用于去重（可选，兼容旧数据） */
+  /** SHA-256 哈希，用于去重 */
   fileHash?: string;
+  /** 处理状态：completed（正常处理完）/ blocked（被配额拒绝） */
+  status: 'completed' | 'blocked';
 }
 
-/** 处理历史的 localStorage key — 按用户 ID 隔离 */
-export function getHistoryKey(userId: number | null | undefined): string {
-  return userId ? `ai-bg-remover-history:${userId}` : 'ai-bg-remover-history';
-}
-export const MAX_HISTORY = 20;
+/** 历史记录最大保留条数（前端不设硬限制，仅用于显示） */
+export const MAX_HISTORY = 100;
 
 // ============================================================
 // G12: 模板背景库

@@ -1,4 +1,4 @@
-import type { RemoveBgResult, ImageDimensions, AuthTokenResponse } from '@/types';
+import type { RemoveBgResult, ImageDimensions, AuthTokenResponse, HistoryEntry } from '@/types';
 import { API_BASE } from '@/types';
 
 // ============ Phase 5: Auth API ============
@@ -197,3 +197,59 @@ export function uploadAndRemoveBg(
     xhr.send(formData);
   });
 }
+
+// ============ History API ============
+
+function getToken(): string | null {
+  return localStorage.getItem('auth_token');
+}
+
+async function historyFetch(url: string, options: RequestInit = {}): Promise<any> {
+  const token = getToken();
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    let msg = `请求失败 (${res.status})`;
+    try {
+      const body = await res.json();
+      if (Array.isArray(body.detail)) {
+        msg = body.detail.map((e: any) => e.msg).join('；');
+      } else {
+        msg = body.detail ?? msg;
+      }
+    } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+
+  return res;
+}
+
+export const historyApi = {
+  /** 获取当前用户的历史记录列表 */
+  async list(): Promise<HistoryEntry[]> {
+    const res = await historyFetch(`${API_BASE}/history`);
+    return res.json();
+  },
+
+  /** 获取历史记录的结果原图（返回 Blob） */
+  async getResult(historyId: number): Promise<Blob> {
+    const res = await historyFetch(`${API_BASE}/history/${historyId}/result`);
+    return res.blob();
+  },
+
+  /** 删除单条历史记录 */
+  async remove(historyId: number): Promise<void> {
+    await historyFetch(`${API_BASE}/history/${historyId}`, { method: 'DELETE' });
+  },
+
+  /** 清空当前用户全部历史记录 */
+  async clearAll(): Promise<void> {
+    await historyFetch(`${API_BASE}/history`, { method: 'DELETE' });
+  },
+};

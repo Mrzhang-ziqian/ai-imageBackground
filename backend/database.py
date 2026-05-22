@@ -44,10 +44,19 @@ SEED_USERS = [
 
 async def init_db() -> None:
     """Create all tables, then insert seed users if they don't exist."""
+    import sqlalchemy as sa
+
     os.makedirs("data", exist_ok=True)
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # --- 数据库迁移：为已有 history 表添加 status 列 ---
+        try:
+            await conn.execute(sa.text("ALTER TABLE history ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'completed'"))
+            logger.info("数据库迁移: history.status 列已添加")
+        except Exception:
+            pass  # 列已存在，忽略
 
     # 插入内置账号
     from auth import hash_password

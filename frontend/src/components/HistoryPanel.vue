@@ -17,28 +17,93 @@
         v-for="entry in entries"
         :key="entry.id"
         class="history-card"
-        :class="{ active: activeId === entry.id }"
-        @click="$emit('restore', entry)"
+        :class="{
+          active: activeId === entry.id,
+          blocked: entry.status === 'blocked',
+        }"
+        :disabled="entry.status === 'blocked'"
+        @click="entry.status === 'blocked' ? null : $emit('restore', entry)"
       >
         <div class="card-thumbs">
+          <!-- 原图缩略图 -->
           <div class="thumb-box original">
-            <img :src="entry.originalThumb" alt="原图" />
+            <div v-if="thumbState(entry.id)?.originalLoading !== false" class="thumb-shimmer" />
+            <img
+              v-if="entry.originalThumb"
+              :src="entry.originalThumb"
+              alt="原图"
+              @load="onThumbLoad(entry.id, 'original')"
+              @error="onThumbError(entry.id, 'original')"
+              :class="{ loaded: !thumbState(entry.id)?.originalLoading }"
+            />
+            <div v-if="thumbState(entry.id)?.originalError" class="thumb-broken">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+              </svg>
+            </div>
           </div>
-          <span class="thumb-arrow">
+
+          <!-- 箭头 -->
+          <span class="thumb-arrow" :class="{ dimmed: entry.status === 'blocked' }">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="5" y1="12" x2="19" y2="12"/>
               <polyline points="12 5 19 12 12 19"/>
             </svg>
           </span>
+
+          <!-- 结果缩略图 -->
           <div class="thumb-box result">
-            <img :src="entry.resultThumb" alt="结果" />
+            <template v-if="entry.status === 'blocked'">
+              <!-- blocked: 显示锁图标 -->
+              <div class="thumb-blocked">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0110 0v4"/>
+                </svg>
+              </div>
+            </template>
+            <template v-else>
+              <div v-if="thumbState(entry.id)?.resultLoading !== false" class="thumb-shimmer" />
+              <img
+                v-if="entry.resultThumb"
+                :src="entry.resultThumb"
+                alt="结果"
+                @load="onThumbLoad(entry.id, 'result')"
+                @error="onThumbError(entry.id, 'result')"
+                :class="{ loaded: !thumbState(entry.id)?.resultLoading }"
+              />
+              <div v-if="thumbState(entry.id)?.resultError" class="thumb-broken">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                </svg>
+              </div>
+            </template>
           </div>
         </div>
+
+        <!-- 文件名 & 尺寸 -->
         <div class="card-meta">
           <span class="card-name" :title="entry.filename">{{ entry.filename }}</span>
-          <span class="card-dims">{{ entry.dimensions.width }}×{{ entry.dimensions.height }}</span>
+          <span class="card-dims">
+            <template v-if="entry.status === 'blocked'">
+              <span class="blocked-badge">今日额度已满</span>
+            </template>
+            <template v-else>
+              {{ entry.width }}×{{ entry.height }}
+            </template>
+          </span>
         </div>
-        <button class="card-delete" title="删除此记录" @click.stop="$emit('remove', entry.id)">
+
+        <!-- 删除按钮 -->
+        <button
+          class="card-delete"
+          title="删除此记录"
+          @click.stop="$emit('remove', entry.id)"
+        >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -50,18 +115,62 @@
 </template>
 
 <script setup lang="ts">
+import { reactive } from 'vue';
 import type { HistoryEntry } from '@/types';
 
 defineProps<{
   entries: readonly HistoryEntry[];
-  activeId?: string;
+  activeId?: number | null;
 }>();
 
 defineEmits<{
   (e: 'restore', entry: HistoryEntry): void;
-  (e: 'remove', id: string): void;
+  (e: 'remove', id: number): void;
   (e: 'clear'): void;
 }>();
+
+// ---- 图片加载状态追踪 ----
+interface ThumbLoadingState {
+  originalLoading: boolean;
+  resultLoading: boolean;
+  originalError: boolean;
+  resultError: boolean;
+}
+
+const thumbStates = reactive<Record<number, ThumbLoadingState>>({});
+
+function thumbState(id: number): ThumbLoadingState | undefined {
+  return thumbStates[id];
+}
+
+function ensureState(id: number): ThumbLoadingState {
+  if (!thumbStates[id]) {
+    thumbStates[id] = { originalLoading: true, resultLoading: true, originalError: false, resultError: false };
+  }
+  return thumbStates[id];
+}
+
+function onThumbLoad(id: number, type: 'original' | 'result') {
+  const s = ensureState(id);
+  if (type === 'original') {
+    s.originalLoading = false;
+    s.originalError = false;
+  } else {
+    s.resultLoading = false;
+    s.resultError = false;
+  }
+}
+
+function onThumbError(id: number, type: 'original' | 'result') {
+  const s = ensureState(id);
+  if (type === 'original') {
+    s.originalLoading = false;
+    s.originalError = true;
+  } else {
+    s.resultLoading = false;
+    s.resultError = true;
+  }
+}
 </script>
 
 <style scoped>
@@ -171,6 +280,45 @@ defineEmits<{
   background: #eef2ff;
 }
 
+/* ---- blocked 状态 ---- */
+.history-card.blocked {
+  cursor: not-allowed;
+  opacity: 0.65;
+  background: #f9fafb;
+}
+
+.history-card.blocked:hover {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  transform: none;
+}
+
+.blocked-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 1px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.2px;
+}
+
+/* 锁图标容器 */
+.thumb-blocked {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d1d5db;
+  background: #f3f4f6;
+}
+
+.dimmed {
+  opacity: 0.3;
+}
+
 .card-thumbs {
   display: flex;
   align-items: center;
@@ -185,12 +333,50 @@ defineEmits<{
   overflow: hidden;
   background: #e5e7eb;
   flex-shrink: 0;
+  position: relative;
 }
 
 .thumb-box img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.thumb-box img.loaded {
+  opacity: 1;
+}
+
+/* ---- 流光加载动画 (shimmer) ---- */
+.thumb-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    #e5e7eb 0%,
+    #f3f4f6 40%,
+    #e5e7eb 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-slide 1.6s ease-in-out infinite;
+  z-index: 1;
+}
+
+@keyframes shimmer-slide {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---- 加载失败图标 ---- */
+.thumb-broken {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d1d5db;
+  background: #f3f4f6;
 }
 
 .thumb-box.original {
@@ -199,6 +385,10 @@ defineEmits<{
 
 .thumb-box.result {
   border: 1px dashed #10b981;
+}
+
+.history-card.blocked .thumb-box.result {
+  border: 1px dashed #e5e7eb;
 }
 
 .thumb-arrow {
@@ -247,6 +437,10 @@ defineEmits<{
 
 .history-card:hover .card-delete {
   opacity: 1;
+}
+
+.history-card.blocked:hover .card-delete {
+  opacity: 0.4;
 }
 
 .card-delete:hover {
