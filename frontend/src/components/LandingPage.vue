@@ -125,16 +125,19 @@
     <footer class="landing-footer">
       <p>&copy; 2026 AI Background Remover. All rights reserved.</p>
     </footer>
+
+    <ToastMessage :toast="toastState" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useToast } from '@/composables/useToast'
+import ToastMessage from './ToastMessage.vue'
 
 defineEmits<{ openAuth: [] }>()
 
-const { showToast } = useToast()
+const { toast: toastState, showToast } = useToast()
 
 // ---- Features ----
 const features = [
