@@ -26,7 +26,7 @@ SEED_USERS = [
     {
         "email": "admin@admin.com",
         "username": "Admin",
-        "password": "admin",
+        "password": "12345678",
         "plan": "pro",
         "quota_daily": 999_999,  # Pro 版不受配额限制，这里设一个大数以兼容显示
         "onboarding_completed": True,
@@ -34,7 +34,7 @@ SEED_USERS = [
     {
         "email": "test@test.com",
         "username": "TestUser",
-        "password": "test",
+        "password": "12345678",
         "plan": "free",
         "quota_daily": 5,
         "onboarding_completed": False,
