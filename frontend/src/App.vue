@@ -1,5 +1,9 @@
 <template>
-  <div class="app" @paste="onPaste">
+  <!-- 未登录：展示 Landing Page -->
+  <LandingPage v-if="!auth.isLoggedIn.value" @open-auth="authModalVisible = true" />
+
+  <!-- 已登录：主应用 -->
+  <div v-else class="app" @paste="onPaste">
     <AppHeader @open-auth="authModalVisible = true" />
 
     <main class="main">
@@ -42,14 +46,11 @@
                   </svg>
                 </div>
                 <h3 class="quota-exhausted-title">今日免费额度已用完</h3>
-                <p class="quota-exhausted-desc" v-if="!auth.isLoggedIn.value">
-                  免费试用 {{ quota.quotaDaily.value }} 次已用完，注册即享每日 5 次免费额度
+                <p class="quota-exhausted-desc">
+                  免费版每日 {{ quota.quotaDaily.value }} 次已用完，明天自动重置。
                 </p>
-                <p class="quota-exhausted-desc" v-else>
-                  免费版每日 {{ quota.quotaDaily.value }} 次已用完，明天自动重置。升级 Pro 解锁无限使用
-                </p>
-                <button class="btn-upgrade" @click="authModalVisible = true">
-                  {{ auth.isLoggedIn.value ? '升级至 Pro' : '免费注册 / 登录' }}
+                <button class="btn-upgrade" @click="showToast({ message: 'Pro 计划即将上线，敬请期待！', type: 'success' })">
+                  升级至 Pro
                 </button>
               </div>
             </div>
@@ -135,8 +136,8 @@
                 </div>
                 <div class="error-actions">
                   <template v-if="isQuotaError">
-                    <button class="btn-retry" @click="authModalVisible = true">
-                      登录解锁更多
+                    <button class="btn-retry" @click="showToast({ message: 'Pro 计划即将上线，敬请期待！', type: 'success' })">
+                      升级至 Pro 无限使用
                     </button>
                     <button class="btn-new-upload" @click="handleReset">
                       返回上传
@@ -185,8 +186,10 @@
       @original="handleLargeImageOriginal"
       @cancel="handleLargeImageCancel"
     />
-    <AuthModal :visible="authModalVisible" @close="authModalVisible = false" />
   </div>
+
+  <!-- 全局 AuthModal（Landing Page 和主应用共用） -->
+  <AuthModal :visible="authModalVisible" @close="authModalVisible = false" />
 </template>
 
 <script setup lang="ts">
@@ -204,6 +207,7 @@ import HistoryPanel from './components/HistoryPanel.vue';
 import BatchPanel from './components/BatchPanel.vue';
 import LargeImageDialog from './components/LargeImageDialog.vue';
 import AuthModal from './components/AuthModal.vue';
+import LandingPage from './components/LandingPage.vue';
 import { useBackgroundRemover } from './composables/useBackgroundRemover';
 import { useHistory } from './composables/useHistory';
 import { useBatchProcessor } from './composables/useBatchProcessor';
@@ -242,7 +246,7 @@ const viewState = computed<ViewState>(() => {
 });
 
 /** 是否是配额耗尽类错误（区分 429 和其他失败） */
-const isQuotaError = computed(() => /已用完|匿名试用/.test(remover.processing.detail));
+const isQuotaError = computed(() => /已用完/.test(remover.processing.detail));
 
 /** 当前活跃的历史条目 ID（用于高亮） */
 const activeHistoryId = ref<string>('');
@@ -263,12 +267,7 @@ const largeImageDialog = ref({
 async function handleFileSelected(file: File): Promise<void> {
   // 0. 配额检查（优先阻断，避免无意义上传）
   if (quota.isExhausted.value) {
-    if (!auth.isLoggedIn.value) {
-      showToast({ message: '免费试用次数已用完，请登录获取每日 5 次额度', type: 'error' });
-      authModalVisible.value = true;
-    } else {
-      showToast({ message: `今日免费额度已用完 (${quota.quotaUsed.value}/${quota.quotaDaily.value})`, type: 'error' });
-    }
+    showToast({ message: `今日免费额度已用完 (${quota.quotaUsed.value}/${quota.quotaDaily.value})，明天自动重置`, type: 'error' });
     return;
   }
 

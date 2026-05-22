@@ -11,10 +11,12 @@ models/
 # 临时文件
 backend/temp/
 *.tmp
+backend/test_*.png
 
 # IDE
 .vscode/
 .idea/
+.vite/
 
 # OS
 .DS_Store
@@ -24,5 +26,10 @@ Thumbs.db
 node_modules/
 frontend/dist/
 
-# Database (Phase 5)
+# Database & Data
+data/
 backend/data/
+
+# Auto-generated at root
+package.json
+package-lock.json

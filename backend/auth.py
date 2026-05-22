@@ -1,12 +1,10 @@
 """
-Authentication — JWT + bcrypt + SQLAlchemy async + IP rate limiter + quota daily reset
+Authentication — JWT + bcrypt + SQLAlchemy async + quota daily reset
 """
 import os
-import time
-from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -54,41 +52,6 @@ async def check_and_reset_quota(user: User, db: AsyncSession) -> None:
         user.quota_used = 0
         user.quota_date = today
         await db.commit()
-
-
-# ---------- Anonymous IP Rate Limiter ----------
-# 匿名用户：同一 IP 每天最多 ANON_DAILY_LIMIT 次/remove-bg 请求
-ANON_DAILY_LIMIT = 10
-
-# 内存计数器：key = "192.168.1.1:2026-05-22" → count
-_anon_counter: dict[str, int] = defaultdict(int)
-_anon_counter_lock = __import__("threading").Lock()
-_anon_last_cleanup = time.time()
-
-
-def _check_anon_rate_limit(client_ip: str) -> None:
-    """检查匿名 IP 频率限制。超过限制抛出 HTTPException(429)。"""
-    today = date.today().isoformat()
-    key = f"{client_ip}:{today}"
-
-    global _anon_last_cleanup
-    # 每 10 分钟清理一次过期键（非今天日期的键）
-    now = time.time()
-    if now - _anon_last_cleanup > 600:
-        with _anon_counter_lock:
-            expired = [k for k in _anon_counter if not k.endswith(f":{today}")]
-            for k in expired:
-                del _anon_counter[k]
-            _anon_last_cleanup = now
-
-    with _anon_counter_lock:
-        count = _anon_counter[key]
-        if count >= ANON_DAILY_LIMIT:
-            raise HTTPException(
-                status_code=429,
-                detail=f"匿名试用次数已用完（每天 {ANON_DAILY_LIMIT} 次），请登录获取每日额度",
-            )
-        _anon_counter[key] = count + 1
 
 
 # ---------- Dependencies ----------
@@ -162,4 +125,16 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(require_user)):
+    return UserResponse.model_validate(current_user)
+
+
+@router.post("/onboarding/complete", response_model=UserResponse)
+async def complete_onboarding(
+    current_user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """标记新手引导已完成。"""
+    current_user.onboarding_completed = True
+    await db.commit()
+    await db.refresh(current_user)
     return UserResponse.model_validate(current_user)

@@ -24,6 +24,7 @@ class UserResponse(BaseModel):
     plan: str
     quota_daily: int
     quota_used: int
+    onboarding_completed: bool = False
 
     class Config:
         from_attributes = True

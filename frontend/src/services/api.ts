@@ -81,22 +81,6 @@ export const authApi = {
 // ============ Remove BG API ============
 
 /**
- * 从 XHR Blob 响应中解析后端返回的 JSON 错误消息。
- * 因为 responseType='blob' 时 xhr.responseText 为空，
- * 必须将 Blob 转为 Text 再解析。
- */
-async function handleErrorResponse(status: number): Promise<Error> {
-  // 尝试从 Content-Type 判断是否是 JSON
-  // 注意：xhr 的 getResponseHeader 在 load 事件中仍可用
-  // 但我们已经把 xhr 引用放在了闭包里，这里重新获取成本很高
-  // 直接返回通用错误，由调用者从 xhr 对象中提取
-  // 实际上：xhr.response 在这一帧里已经是 Blob，需异步读取
-  // 为了让错误信息完整，我们同步返回一个含 status 的 Error
-  let detail = `服务器错误 (${status})`;
-  return new Error(detail);
-}
-
-/**
  * 上传图片并调用后端移除背景。
  *
  * @param file         要处理的图片文件

@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from PIL import Image
@@ -24,7 +24,7 @@ from rembg import remove, new_session
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db
-from auth import router as auth_router, get_current_user, check_and_reset_quota, _check_anon_rate_limit
+from auth import router as auth_router, require_user, check_and_reset_quota
 from models import User
 
 # ---------- 日志 ----------
@@ -192,9 +192,8 @@ async def http_exception_handler(request, exc: HTTPException):
 # ---------- 背景移除 ----------
 @app.post("/remove-bg")
 async def remove_background(
-    request: Request,
     file: UploadFile = File(...),
-    current_user: User | None = Depends(get_current_user),
+    current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -202,28 +201,21 @@ async def remove_background(
     AI 推理在线程池中执行，不阻塞事件循环，支持并发。
 
     鉴权 & 配额：
-    - 匿名用户：IP + 日期限频（每天 10 次），超限返回 429
+    - 必须登录（未认证返回 401）
     - 已登录（free）：每日有限配额（5 次），日期变更自动重置
     - 已登录（pro/team）：无限制
     """
-    # --- 0. 获取客户端 IP ---
-    client_ip = request.client.host if request.client else "unknown"
-
-    # --- 1. 匿名用户 IP 频率限制 ---
-    if current_user is None:
-        _check_anon_rate_limit(client_ip)
-
-    # --- 2. 配额日重置（已登录免费用户）---
-    if current_user and current_user.plan == "free":
+    # --- 1. 配额日重置（已登录免费用户）---
+    if current_user.plan == "free":
         await check_and_reset_quota(current_user, db)
-    # --- 3. 校验文件类型 ---
+    # --- 2. 校验文件类型 ---
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
             detail=f"不支持的文件类型: {file.content_type}，仅支持 PNG、JPEG、WebP",
         )
 
-    # --- 4. 读取文件内容 ---
+    # --- 3. 校验文件内容 ---
     try:
         contents = await file.read()
     except Exception as e:
@@ -237,7 +229,7 @@ async def remove_background(
             detail=f"文件过大 (最大 20MB)，当前大小: {len(contents) / 1024 / 1024:.1f}MB",
         )
 
-    # --- 5. 解析图片 ---
+    # --- 4. 解析图片 ---
     try:
         image = Image.open(io.BytesIO(contents))
         image.load()  # 强制解码，提前暴露损坏图片
@@ -252,8 +244,8 @@ async def remove_background(
             detail=f"图片尺寸过大 (最大 {MAX_IMAGE_DIM}px)，当前: {image.width}x{image.height}",
         )
 
-    # --- 5.2 配额检查（已登录免费用户，已在上面重置过） ---
-    if current_user and current_user.plan == "free":
+    # --- 4.2 配额检查（已登录免费用户，已在上面重置过） ---
+    if current_user.plan == "free":
         if current_user.quota_used >= current_user.quota_daily:
             raise HTTPException(
                 status_code=429,
@@ -263,7 +255,7 @@ async def remove_background(
     original_size = (image.width, image.height)
     logger.info(f"处理图片: {file.filename} (原图 {original_size[0]}x{original_size[1]}, {len(contents) / 1024:.1f}KB)")
 
-    # --- 3.5. 先缩放再转 RGBA，减少峰值内存 ---
+    # --- 5. 先缩放再转 RGBA，减少峰值内存 ---
     try:
         needs_scale = max(original_size[0], original_size[1]) > PROCESS_MAX_DIM
         if needs_scale:
@@ -299,7 +291,7 @@ async def remove_background(
     # 主动触发垃圾回收，减少内存碎片
     gc.collect()
 
-    # --- 4. AI 移除背景（模型降级 + 重试 + 超时保护） ---
+    # --- 6. AI 移除背景（模型降级 + 重试 + 超时保护） ---
     try:
         ai_result, model_label, was_fallback = await asyncio.wait_for(
             asyncio.to_thread(_run_remove_with_fallback, ai_input),
@@ -331,7 +323,7 @@ async def remove_background(
         gc.collect()
         raise HTTPException(status_code=500, detail=f"背景移除处理失败: {e}")
 
-    # --- 4.5. 还原到原始尺寸：提取 alpha mask → 放大 → 应用到原图 ---
+    # --- 6.5. 还原到原始尺寸 ---
     if scaled:
         # 从低分辨率结果中提取 alpha 通道
         alpha_small = ai_result.split()[-1]  # RGBA 的 A 通道
@@ -344,7 +336,7 @@ async def remove_background(
     else:
         final_result = ai_result
 
-    # --- 5. 输出为 PNG 字节流 ---
+    # --- 7. 输出为 PNG 字节流 ---
     output = io.BytesIO()
     final_result.save(output, format="PNG")
     output.seek(0)
@@ -352,8 +344,8 @@ async def remove_background(
 
     logger.info(f"处理完成: {file.filename} ({final_result.width}x{final_result.height}, {result_size_kb:.1f}KB)")
 
-    # --- 5.5 配额递增（已登录免费用户） ---
-    if current_user and current_user.plan == "free":
+    # --- 7.5 配额递增（已登录免费用户） ---
+    if current_user.plan == "free":
         current_user.quota_used += 1
         await db.commit()
         logger.info(
@@ -373,10 +365,9 @@ async def remove_background(
         "X-Image-Height": str(final_result.height),
         "X-Model-Used": model_label,
     }
-    if current_user:
-        resp_headers["X-Quota-Plan"] = current_user.plan
-        resp_headers["X-Quota-Used"] = str(current_user.quota_used)
-        resp_headers["X-Quota-Daily"] = str(current_user.quota_daily)
+    resp_headers["X-Quota-Plan"] = current_user.plan
+    resp_headers["X-Quota-Used"] = str(current_user.quota_used)
+    resp_headers["X-Quota-Daily"] = str(current_user.quota_daily)
 
     return StreamingResponse(
         output,

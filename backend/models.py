@@ -24,6 +24,9 @@ class User(Base):
     quota_used  = Column(Integer, default=0, server_default="0")
     quota_date  = Column(Date, nullable=True)                            # last quota usage date (for daily reset)
 
+    # Onboarding
+    onboarding_completed = Column(Boolean, default=False, server_default="0")  # 新手引导是否完成
+
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),
