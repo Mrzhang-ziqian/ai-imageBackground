@@ -166,7 +166,6 @@
       @original="handleLargeImageOriginal"
       @cancel="handleLargeImageCancel"
     />
-  </div>
     <!-- Phase 5: 鉴权弹窗 -->
     <AuthModal :visible="authModalVisible" @close="authModalVisible = false" />
   </div>
