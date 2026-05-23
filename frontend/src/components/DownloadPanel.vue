@@ -65,6 +65,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { formatFileSize } from '@/utils/imageUtils';
 
 const props = defineProps<{
   /** 当前显示的 Blob（可能已合成背景色） */
@@ -88,10 +89,10 @@ const dropdownRef = ref<HTMLElement | null>(null);
 const sizes = computed(() => {
   const b = props.blob;
   if (!b) return { png: '', webp: '' };
-  const pngSize = formatSize(b.size);
+  const pngSize = formatFileSize(b.size);
   // WebP 一般比 PNG 小 30-60%
   const webpEst = Math.round(b.size * 0.4);
-  return { png: pngSize, webp: formatSize(webpEst) };
+  return { png: pngSize, webp: formatFileSize(webpEst) };
 });
 
 // ---- 点击外部关闭 ----
@@ -208,11 +209,7 @@ async function onCopy() {
 }
 
 // ---- 工具函数 ----
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+// formatFileSize 已从 @/utils/imageUtils 导入
 </script>
 
 <style scoped>

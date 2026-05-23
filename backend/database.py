@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
-DATABASE_URL = "sqlite+aiosqlite:///./data/app.db"
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./data/app.db")
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -26,15 +26,15 @@ SEED_USERS = [
     {
         "email": "admin@admin.com",
         "username": "Admin",
-        "password": "12345678",
+        "password": os.environ.get("SEED_ADMIN_PASSWORD", "Admin123!"),
         "plan": "pro",
-        "quota_daily": 999_999,  # Pro 版不受配额限制，这里设一个大数以兼容显示
+        "quota_daily": 999_999,
         "onboarding_completed": True,
     },
     {
         "email": "test@test.com",
         "username": "TestUser",
-        "password": "12345678",
+        "password": os.environ.get("SEED_TEST_PASSWORD", "Test123456!"),
         "plan": "free",
         "quota_daily": 5,
         "onboarding_completed": False,
@@ -55,7 +55,7 @@ async def init_db() -> None:
         try:
             await conn.execute(sa.text("ALTER TABLE history ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'completed'"))
             logger.info("数据库迁移: history.status 列已添加")
-        except Exception:
+        except sa.exc.OperationalError:
             pass  # 列已存在，忽略
 
     # 插入内置账号

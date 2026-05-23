@@ -137,7 +137,7 @@ const resultBoxStyle = computed(() => {
   if (props.bgColor !== 'transparent') {
     return {
       backgroundImage: 'none',
-      backgroundColor: '#f0f0f0',
+      backgroundColor: props.bgColor,
     };
   }
   return {};

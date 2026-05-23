@@ -178,6 +178,7 @@ const demoSection = ref<HTMLElement>()
 const demoSlider = ref<HTMLElement>()
 const sliderPercent = ref(50)
 let autoPlayTimer: ReturnType<typeof setTimeout> | null = null
+let rafId: number | null = null
 let dragging = false
 
 function updateSlider(clientX: number) {
@@ -221,7 +222,7 @@ function startAutoPlay() {
         : 1 - Math.pow(-2 * progress + 2, 2) / 2
       sliderPercent.value = Math.round(eased * 65)
       if (progress < 1) {
-        requestAnimationFrame(tick)
+        rafId = requestAnimationFrame(tick)
       } else {
         // 回到中间位置
         setTimeout(() => {
@@ -229,7 +230,7 @@ function startAutoPlay() {
         }, 2000)
       }
     }
-    requestAnimationFrame(tick)
+    rafId = requestAnimationFrame(tick)
   }, 1200)
 }
 
@@ -247,6 +248,7 @@ onUnmounted(() => {
   document.removeEventListener('touchmove', onTouchMove)
   document.removeEventListener('touchend', stopDrag)
   if (autoPlayTimer) clearTimeout(autoPlayTimer)
+  if (rafId !== null) cancelAnimationFrame(rafId)
 })
 </script>
 
@@ -618,6 +620,7 @@ onUnmounted(() => {
   color: #fff;
   overflow: hidden;
   box-shadow: 0 8px 40px rgba(67,56,202,0.3);
+  pointer-events: auto;
 }
 .pro-card::before {
   content: '';
@@ -654,6 +657,8 @@ onUnmounted(() => {
   margin-bottom: 1.5rem;
 }
 .pro-btn {
+  position: relative;
+  z-index: 1;
   padding: 0.75rem 2rem;
   border-radius: 999px;
   font-size: 0.9375rem;

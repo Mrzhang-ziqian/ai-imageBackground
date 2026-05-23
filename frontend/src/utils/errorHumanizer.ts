@@ -95,8 +95,9 @@ export function humanizeError(rawMessage: string): string {
  */
 export function humanizeCatch(err: unknown): string {
   if (err instanceof Error) {
-    // 特殊处理 QuotaExhaustedError — 不翻译，保持原文
-    if (err.constructor.name === 'QuotaExhaustedError') {
+    // 特殊处理 QuotaExhaustedError — 通过类名判断（兼容压缩前/后）
+    const name = err.name || err.constructor?.name || '';
+    if (name === 'QuotaExhaustedError') {
       return humanizeError(err.message || '今日额度已用完');
     }
     return humanizeError(err.message || '未知错误');

@@ -115,10 +115,10 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue';
+import { reactive, watch, onUnmounted } from 'vue';
 import type { HistoryEntry } from '@/types';
 
-defineProps<{
+const props = defineProps<{
   entries: readonly HistoryEntry[];
   activeId?: number | null;
 }>();
@@ -139,6 +139,26 @@ interface ThumbLoadingState {
 }
 
 const thumbStates = reactive<Record<number, ThumbLoadingState>>({});
+
+/** 监听 entries 变化，清理已删除条目的 thumbState */
+watch(
+  () => props.entries.map((e) => e.id),
+  (currentIds) => {
+    const idSet = new Set(currentIds);
+    for (const key of Object.keys(thumbStates)) {
+      if (!idSet.has(Number(key))) {
+        delete thumbStates[Number(key)];
+      }
+    }
+  },
+  { immediate: true }
+);
+
+onUnmounted(() => {
+  for (const key of Object.keys(thumbStates)) {
+    delete thumbStates[Number(key)];
+  }
+});
 
 function thumbState(id: number): ThumbLoadingState | undefined {
   return thumbStates[id];

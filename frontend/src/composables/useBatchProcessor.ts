@@ -3,11 +3,6 @@ import type { BatchItem, BatchItemStatus, BatchPhase, ImageDimensions } from '@/
 import { uploadAndRemoveBg } from '@/services/api';
 import type { HistoryEntry } from '@/types';
 
-let _nextId = 0;
-function generateId(): string {
-  return `batch_${Date.now()}_${++_nextId}`;
-}
-
 /**
  * 批量处理组合式函数。
  *
@@ -18,6 +13,10 @@ function generateId(): string {
  * - 支持取消全部
  */
 export function useBatchProcessor() {
+  let _nextId = 0;
+  function generateId(): string {
+    return `batch_${Date.now()}_${++_nextId}`;
+  }
   // ---- State ----
   const items = reactive<BatchItem[]>([]);
   const phase = ref<BatchPhase>('entry');

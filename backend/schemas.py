@@ -7,9 +7,9 @@ from pydantic import BaseModel, Field
 # ---------- Auth ----------
 
 class UserRegister(BaseModel):
-    email: str = Field(..., min_length=5, max_length=255)
-    username: str = Field(..., min_length=2, max_length=100)
-    password: str = Field(..., min_length=6, max_length=128)
+    email: str = Field(..., min_length=5, max_length=255, pattern=r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
+    username: str = Field(..., min_length=2, max_length=100, pattern=r'^[a-zA-Z0-9_\-\u4e00-\u9fff]+$')
+    password: str = Field(..., min_length=8, max_length=128)
 
 
 class UserLogin(BaseModel):

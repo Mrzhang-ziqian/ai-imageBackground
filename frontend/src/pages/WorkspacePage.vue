@@ -269,7 +269,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '@/components/AppHeader.vue';
 import AppFooter from '@/components/AppFooter.vue';
@@ -311,29 +311,9 @@ const route = useRoute();
 const viewMode = ref<'single' | 'batch'>('single');
 const historyCollapsed = ref(false);
 
-const batchProgressVisible = computed(() =>
-  batch.isProcessing.value && viewMode.value === 'single',
-);
-
-// ---- 批量模式选择对话框 ----
-const batchChoiceVisible = ref(false);
-const batchChoiceFiles = ref<File[]>([]);
-const batchChoiceCount = computed(() => batchChoiceFiles.value.length);
-
 // ---- 新用户引导 ----
 const ONBOARDING_KEY = 'ai-bg-remover-onboarding-shown';
 const showOnboarding = ref(false);
-
-onMounted(() => {
-  if (!localStorage.getItem(ONBOARDING_KEY) && auth.isLoggedIn.value) {
-    showOnboarding.value = true;
-    localStorage.setItem(ONBOARDING_KEY, '1');
-  }
-});
-
-function dismissOnboarding(): void {
-  showOnboarding.value = false;
-}
 
 // ---- 配额文案 ----
 const quotaText = computed(() => {
@@ -345,12 +325,28 @@ const quotaText = computed(() => {
   return `今日剩余 ${left} 次免费处理`;
 });
 
-// ---- 首次挂载 & 从草稿确认返回时加载历史 ----
-onMounted(() => {
+const batchProgressVisible = computed(() =>
+  batch.isProcessing.value && viewMode.value === 'single',
+);
+
+// ---- 批量模式选择对话框 ----
+const batchChoiceVisible = ref(false);
+const batchChoiceFiles = ref<File[]>([]);
+const batchChoiceCount = computed(() => batchChoiceFiles.value.length);
+
+// ---- 首次挂载：引导 + 历史加载（合并为单个 onMounted） ----
+onMounted(async () => {
+  // 新用户引导
+  if (!localStorage.getItem(ONBOARDING_KEY) && auth.isLoggedIn.value) {
+    showOnboarding.value = true;
+    localStorage.setItem(ONBOARDING_KEY, '1');
+  }
+  // 草稿箱初始化
   drafts.init();
+  // 历史加载
   if (route.query.confirmed === '1') {
-    history.reload();
-    quota.syncFromServer();
+    await history.reload();
+    await quota.syncFromServer();
     router.replace({ query: {} });
   } else if (!history.loaded.value) {
     history.load();
@@ -407,8 +403,8 @@ watch(selectedBgColor, async (newColor) => {
 watch(() => remover.currentBgColor.value, (newColor) => {
   bgColorSyncing = true;
   selectedBgColor.value = newColor;
-  // 等 Vue 更新完后再取消标记
-  setTimeout(() => { bgColorSyncing = false; }, 0);
+  // 使用 nextTick 代替 setTimeout，更可靠
+  nextTick(() => { bgColorSyncing = false; });
 });
 
 // ---- 当前草稿 ID（用于精修跳转） ----
@@ -549,7 +545,8 @@ async function handleLargeImageResize(): Promise<void> {
   } catch (err) {
     ui.showToast({ message: humanizeError(err instanceof Error ? err.message : '图片缩放失败'), type: 'error' });
     largeImageDialog.value.visible = false;
-    await doProcessFile(file);
+    ui.showToast({ message: humanizeError(err instanceof Error ? err.message : '图片缩放失败，已取消处理'), type: 'error' });
+    // 不静默使用原图——尊重用户选择
   } finally { largeImageDialog.value.resizing = false; }
 }
 
@@ -668,10 +665,10 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
   }
 }
 
-/** blocked 记录重试：引导用户重新上传 */
+/** blocked 记录重试：引导用户重新上传并从历史中移除该条目 */
 function handleRetryBlocked(entryId: number): void {
-  // blocked 记录后台已清理（G28 修复），此处提示用户重新上传
-  ui.showToast({ message: '请重新上传图片，此记录将自动更新', type: 'success' });
+  history.remove(entryId);
+  ui.showToast({ message: '请重新上传图片', type: 'success' });
   doReset();
 }
 

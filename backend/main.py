@@ -6,6 +6,7 @@ AI Background Remover - Backend Service
 
 import io
 import gc
+import os
 import re
 import asyncio
 import logging
@@ -16,11 +17,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from PIL import Image
 from rembg import remove, new_session
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db
@@ -54,10 +56,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS 配置 —— 允许前端跨域访问
+# CORS 配置 —— 从环境变量读取允许来源
+ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in ALLOWED_ORIGINS],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -70,7 +73,17 @@ app.include_router(history_router)
 
 # ---------- 常量 ----------
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
+# 文件魔数校验（8 字节读取足够覆盖所有主流格式）
+MAGIC_SIGNATURES = {
+    b'\x89PNG\r\n\x1a\n': 'image/png',
+    b'\xff\xd8\xff': 'image/jpeg',
+}
+# WebP 魔数为 RIFF....WEBP（前 4 + 偏移 8 的 4 字节）
+WEBP_RIFF = b'RIFF'
+WEBP_WEBP = b'WEBP'
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+# FastAPI 请求体大小限制（先于内存读取）
+MAX_BODY_SIZE = 25 * 1024 * 1024  # 25MB
 MAX_IMAGE_DIM = 3000       # 最大允许上传边长（超过拒绝）
 PROCESS_MAX_DIM = 800      # AI 处理时缩放到的最大边长（降低内存压力）
 AI_TIMEOUT_SECONDS = 90    # AI 推理超时（秒）
@@ -166,20 +179,47 @@ def _run_remove_with_fallback(image, max_retries: int = 2):
     raise RuntimeError(f"所有 AI 模型均处理失败 ({detail})")
 
 
+# ---------- 安全响应头中间件 ----------
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 # ---------- 健康检查 ----------
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "AI Background Remover"}
 
 
+# ---------- 文件魔数校验 ----------
+def _validate_magic_bytes(raw: bytes) -> str | None:
+    """校验文件魔数，返回检测到的 MIME 类型；不匹配返回 None。"""
+    if raw[:8] == MAGIC_SIGNATURES.get(b'\x89PNG\r\n\x1a\n', b'\x89PNG\r\n\x1a\n'):
+        return 'image/png'
+    if raw[:3] == b'\xff\xd8\xff':
+        return 'image/jpeg'
+    if raw[:4] == WEBP_RIFF and len(raw) >= 12 and raw[8:12] == WEBP_WEBP:
+        return 'image/webp'
+    return None
+
+
 # ---------- 全局异常处理 ----------
+IS_DEV = os.environ.get("ENV", "production").lower() in ("dev", "development")
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """捕获所有未处理异常，输出完整堆栈并返回 JSON 错误"""
     logger.error(f"未捕获异常 [{request.method} {request.url.path}]: {exc}\n{traceback.format_exc()}")
+    detail = f"服务器内部错误: {exc}" if IS_DEV else "服务器内部错误，请稍后重试"
     return JSONResponse(
         status_code=500,
-        content={"detail": f"服务器内部错误: {exc}", "type": type(exc).__name__},
+        content={"detail": detail, "type": type(exc).__name__} if IS_DEV else {"detail": "服务器内部错误，请稍后重试"},
     )
 
 
@@ -215,8 +255,16 @@ async def remove_background(
     # --- 2. 校验文件类型 ---
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
-            status_code=400,
+            status_code=415,
             detail=f"不支持的文件类型: {file.content_type}，仅支持 PNG、JPEG、WebP",
+        )
+
+    # --- 2.5 校验文件大小（FastAPI 请求体限制前置，防止内存耗尽） ---
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件过大 (最大 20MB)，当前大小: {int(content_length) / 1024 / 1024:.1f}MB",
         )
 
     # --- 3. 校验文件内容 ---
@@ -226,10 +274,15 @@ async def remove_background(
         logger.error(f"读取文件失败: {e}")
         raise HTTPException(status_code=400, detail=f"读取文件失败: {e}")
 
+    # 校验文件魔数（防止 MIME 伪造）
+    detected_mime = _validate_magic_bytes(contents)
+    if detected_mime is None:
+        raise HTTPException(status_code=400, detail="无法识别的文件格式，请上传 PNG、JPEG 或 WebP 图片")
+
     # 校验文件大小
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(
-            status_code=400,
+            status_code=413,
             detail=f"文件过大 (最大 20MB)，当前大小: {len(contents) / 1024 / 1024:.1f}MB",
         )
 
@@ -248,10 +301,18 @@ async def remove_background(
             detail=f"图片尺寸过大 (最大 {MAX_IMAGE_DIM}px)，当前: {image.width}x{image.height}",
         )
 
-    # --- 4.2 配额检查（已登录免费用户，已在上面重置过） ---
+    # --- 4.2 配额检查 & 原子扣减（防止 TOCTOU 竞态） ---
     if current_user.plan == "free":
-        if current_user.quota_used >= current_user.quota_daily:
-            # 保存被阻塞的记录（原图信息），让用户刷新后仍能看到
+        # 使用数据库级别原子更新：WHERE quota_used < quota_daily 确保不会超用
+        result = await db.execute(
+            update(User)
+            .where(User.id == current_user.id, User.quota_used < User.quota_daily)
+            .values(quota_used=User.quota_used + 1)
+        )
+        await db.refresh(current_user)
+
+        if result.rowcount == 0:
+            # 配额已满或超用，保存被阻塞的记录
             await save_history_entry_blocked(
                 user=current_user,
                 db=db,
@@ -264,6 +325,10 @@ async def remove_background(
                 status_code=429,
                 detail=f"今日免费配额已用完 ({current_user.quota_used}/{current_user.quota_daily})，请升级至 Pro 版",
             )
+        # 配额已原子递增，后续无需再手动 +1
+        quota_deducted = True
+    else:
+        quota_deducted = False
 
     original_size = (image.width, image.height)
     logger.info(f"处理图片: {file.filename} (原图 {original_size[0]}x{original_size[1]}, {len(contents) / 1024:.1f}KB)")
@@ -301,8 +366,8 @@ async def remove_background(
         logger.error(f"图片预处理失败 (缩放/转RGBA): {e}")
         raise HTTPException(status_code=400, detail=f"图片预处理失败: {e}")
 
-    # 主动触发垃圾回收，减少内存碎片
-    gc.collect()
+    # 主动触发垃圾回收，减少内存碎片（不阻塞事件循环）
+    await asyncio.to_thread(gc.collect)
 
     # --- 6. AI 移除背景（模型降级 + 重试 + 超时保护） ---
     try:
@@ -323,7 +388,7 @@ async def remove_background(
         )
     except MemoryError:
         logger.error(f"内存不足: {file.filename}")
-        gc.collect()
+        await asyncio.to_thread(gc.collect)
         raise HTTPException(
             status_code=500,
             detail="服务器内存不足，无法处理该图片。建议：上传更小的图片（长边 ≤ 2000px，文件 ≤ 5MB）",
@@ -333,7 +398,7 @@ async def remove_background(
         raise HTTPException(status_code=500, detail=f"背景移除处理失败: {e}")
     except Exception as e:
         logger.error(f"背景移除未知错误: {e}\n{traceback.format_exc()}")
-        gc.collect()
+        await asyncio.to_thread(gc.collect)
         raise HTTPException(status_code=500, detail=f"背景移除处理失败: {e}")
 
     # --- 6.5. 还原到原始尺寸 ---
@@ -369,20 +434,18 @@ async def remove_background(
         model_label=model_label,
     )
 
-    # --- 7.6 配额递增（仅在历史保存成功后扣减） ---
-    if current_user.plan == "free":
-        if history_id is None:
-            # 历史保存失败，不扣配额 — 用户可重试
-            logger.error(
-                f"历史保存失败，配额未扣减: {current_user.email} "
-                f"(仍为 {current_user.quota_used}/{current_user.quota_daily})"
-            )
-        else:
-            current_user.quota_used += 1
-            await db.commit()
-            logger.info(
-                f"用户配额更新: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
-            )
+    # --- 7.6 配额已原子扣减，仅处理历史保存失败的异常情况 ---
+    if current_user.plan == "free" and not quota_deducted:
+        # 兜底：如果上面原子更新未执行（理论上不应发生），手动递增
+        current_user.quota_used += 1
+        await db.flush()
+        logger.info(
+            f"用户配额更新（兜底）: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
+        )
+    elif current_user.plan == "free" and quota_deducted:
+        logger.info(
+            f"用户配额更新: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
+        )
 
     # 安全文件名：仅保留 ASCII 安全字符（字母数字、中文、下划线、连字符、点）
     original_stem = Path(file.filename or "image").stem
@@ -411,4 +474,6 @@ async def remove_background(
 # ---------- 启动入口 ----------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run(app, host=host, port=port)

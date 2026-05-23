@@ -12,13 +12,17 @@ services:
       dockerfile: Dockerfile.backend
     container_name: bgremover-backend
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    # 不直接暴露端口到宿主机，仅通过 nginx 代理访问
+    expose:
+      - "8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - JWT_SECRET=${JWT_SECRET:-change_me_in_production_use_openssl_rand_hex_32}
     volumes:
-      # 持久化 rembg 模型缓存（避免容器重建后重新下载）
+      # 持久化 rembg 模型缓存
       - rembg-models:/root/.u2net
+      # 持久化数据库数据
+      - ./data:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s

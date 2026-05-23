@@ -16,7 +16,16 @@ from models import User
 from schemas import UserRegister, UserLogin, UserResponse, TokenResponse
 
 # ---------- Config ----------
-SECRET_KEY = os.environ.get("JWT_SECRET", "dev-secret-change-in-production-32chars!")
+SECRET_KEY = os.environ.get("JWT_SECRET", "")
+if not SECRET_KEY:
+    import secrets
+    import warnings
+    SECRET_KEY = secrets.token_hex(32)
+    warnings.warn(
+        "环境变量 JWT_SECRET 未设置！已使用运行时随机密钥。"
+        "服务重启后所有现有 token 将失效。生产环境请务必设置 JWT_SECRET。",
+        RuntimeWarning,
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
@@ -68,7 +77,7 @@ async def get_current_user(
         user_id: str | None = payload.get("sub")
         if user_id is None:
             return None
-    except JWTError:
+    except (JWTError, ValueError):
         return None
 
     result = await db.execute(select(User).where(User.id == int(user_id)))
@@ -87,10 +96,10 @@ async def require_user(current_user: User | None = Depends(get_current_user)) ->
 @router.post("/register", response_model=TokenResponse)
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     # Check duplicates
-    if (await db.execute(select(User).where(User.email == data.email))).scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="该邮箱已被注册")
-    if (await db.execute(select(User).where(User.username == data.username))).scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="该用户名已被占用")
+    if (await db.execute(select(User).where(User.email == data.email.strip().lower()))).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="该邮箱已被注册")
+    if (await db.execute(select(User).where(User.username == data.username.strip()))).scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="该用户名已被占用")
 
     user = User(
         email=data.email.strip().lower(),

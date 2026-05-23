@@ -50,11 +50,16 @@
                       <span v-else class="mini-spinner"></span>
                       {{ confirming ? '确认中...' : '确认完成' }}
                     </button>
-                    <button class="btn-delete-detail" @click="handleDelete">
+                    <button
+                      class="btn-delete-detail"
+                      :class="{ 'delete-confirm': showDeleteConfirm }"
+                      @click="handleDelete"
+                      :disabled="deleting"
+                    >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
                       </svg>
-                      删除草稿
+                      {{ showDeleteConfirm ? '确认删除?' : '删除草稿' }}
                     </button>
                   </div>
                   <p class="action-hint">确认后将保存到处理历史，未确认的草稿不会出现在历史记录中。</p>
@@ -124,6 +129,22 @@ const drafts = useDraftsStore();
 
 const loading = ref(true);
 const confirming = ref(false);
+const deleting = ref(false);
+
+/** 跟踪本组件创建的 Object URL，组件卸载时统一回收 */
+const trackedUrls: string[] = [];
+
+function trackUrl(url: string): string {
+  trackedUrls.push(url);
+  return url;
+}
+
+function releaseAllUrls(): void {
+  for (const url of trackedUrls) {
+    URL.revokeObjectURL(url);
+  }
+  trackedUrls.length = 0;
+}
 
 /** 从 IndexedDB 加载草稿数据并初始化 remover */
 onMounted(async () => {
@@ -158,11 +179,21 @@ onMounted(async () => {
     return;
   }
 
-  // 创建 Object URLs
-  const resultUrl = URL.createObjectURL(resultBlob);
-  const originalUrl = originalBlob ? URL.createObjectURL(originalBlob) : resultUrl;
+  // 原图丢失时提示用户（对比功能将失效）
+  if (!originalBlob) {
+    ui.showToast({
+      message: '原始图片数据已丢失，对比功能已禁用',
+      type: 'warning',
+    });
+  }
 
-  // 恢复状态到 remover（跳过"restoreFromHistory"，手动设置）
+  // 创建 Object URLs（track 以便卸载时自动回收）
+  const resultUrl = trackUrl(URL.createObjectURL(resultBlob));
+  const originalUrl = originalBlob
+    ? trackUrl(URL.createObjectURL(originalBlob))
+    : resultUrl;
+
+  // 恢复状态到 remover
   remover.restoreFromDraft?.({
     resultUrl,
     resultBlob,
@@ -173,12 +204,12 @@ onMounted(async () => {
     modelUsed: draftMeta.modelUsed,
   });
 
-  // 如果 restoreFromDraft 不存在，用公开方法
   loading.value = false;
 });
 
 onUnmounted(() => {
-  // 页面卸载时清理 Object URLs（remover.reset 会处理）
+  releaseAllUrls();
+  remover.reset?.();
 });
 
 /** 确认完成 → 删除草稿 → 返回工作台（携带 confirmed 参数触发历史刷新） */
@@ -198,19 +229,37 @@ async function handleConfirm(): Promise<void> {
     // 携带 confirmed 参数，WorkspacePage 检测后刷新历史
     router.replace({ path: '/workspace', query: { confirmed: '1' } });
   } catch (err) {
-    console.error('Confirm error:', err);
+    if (import.meta.env.DEV) {
+      console.error('Confirm error:', err);
+    }
     ui.showToast({ message: '确认失败，请重试', type: 'error' });
   } finally {
     confirming.value = false;
   }
 }
 
-/** 删除草稿 */
+/** 删除草稿 - 含确认防误触 */
+const showDeleteConfirm = ref(false);
+
 async function handleDelete(): Promise<void> {
-  const draftId = route.params.id as string;
-  await drafts.remove(draftId);
-  ui.showToast({ message: '草稿已删除', type: 'success' });
-  router.replace('/workspace');
+  if (!showDeleteConfirm.value) {
+    showDeleteConfirm.value = true;
+    return;
+  }
+  // 二次确认后执行删除
+  deleting.value = true;
+  try {
+    const draftId = route.params.id as string;
+    await drafts.remove(draftId);
+    releaseAllUrls();
+    ui.showToast({ message: '草稿已删除', type: 'success' });
+    router.replace('/workspace');
+  } catch (err) {
+    ui.showToast({ message: '删除失败，请重试', type: 'error' });
+  } finally {
+    deleting.value = false;
+    showDeleteConfirm.value = false;
+  }
 }
 
 /** 返回工作台（保留草稿） */
@@ -388,7 +437,9 @@ function handleEdgeReset(): void {
   cursor: pointer;
   transition: all 0.2s;
 }
-.btn-delete-detail:hover { background: #fef2f2; }
+.btn-delete-detail:hover:not(:disabled) { background: #fef2f2; }
+.btn-delete-detail.delete-confirm { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
+.btn-delete-detail:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .action-hint {
   font-size: 12px;
