@@ -19,7 +19,7 @@
               </span>
               <span class="username">{{ user.username }}</span>
             </div>
-            <button class="auth-btn outline" @click="logout">退出</button>
+            <button class="auth-btn outline" @click="handleLogout">退出</button>
           </template>
           <button v-else class="auth-btn primary" @click="$emit('open-auth')">
             登录
@@ -33,11 +33,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useQuota } from '@/composables/useQuota'
 
 defineEmits<{ openAuth: [] }>()
 
+const router = useRouter()
 const { isLoggedIn, user, userPlan, logout } = useAuth()
 const { quotaLeft, isExhausted } = useQuota()
 
@@ -45,6 +47,11 @@ const planLabel = computed(() => {
   const map: Record<string, string> = { free: '免费', pro: 'Pro', team: 'Team' }
   return map[userPlan.value] ?? '免费'
 })
+
+function handleLogout(): void {
+  logout()
+  router.push('/')
+}
 </script>
 
 <style scoped>

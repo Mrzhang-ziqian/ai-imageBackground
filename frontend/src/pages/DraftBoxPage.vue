@@ -42,7 +42,7 @@
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                     <polyline points="20 6 9 17 4 12"/>
                   </svg>
-                  确认完成
+                  进入编辑
                 </button>
               </div>
             </div>
@@ -76,6 +76,8 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import AppHeader from '@/components/AppHeader.vue';
 import AppFooter from '@/components/AppFooter.vue';
 import ToastMessage from '@/components/ToastMessage.vue';
@@ -85,26 +87,19 @@ import { useUiStore } from '@/stores/ui';
 
 const drafts = useDraftsStore();
 const ui = useUiStore();
+const router = useRouter();
 
-async function handleConfirm(draft: Draft): Promise<void> {
-  const blob = await drafts.getBlob(draft.id);
-  if (!blob) {
-    ui.showToast({ message: '草稿数据丢失，请重新上传', type: 'error' });
-    return;
-  }
-  // 下载
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = draft.filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
-  // 移除草稿
-  await drafts.remove(draft.id);
-  ui.showToast({ message: `已确认: ${draft.filename}`, type: 'success' });
+onMounted(() => {
+  drafts.init();
+});
+
+/** 查看草稿详情 → 进入编辑页面 */
+function handleConfirm(draft: Draft): void {
+  router.push(`/workspace/draft/${draft.id}`);
 }
 
 async function handleDownload(draft: Draft): Promise<void> {
-  const blob = await drafts.getBlob(draft.id);
+  const blob = await drafts.getResultBlob(draft.id);
   if (!blob) {
     ui.showToast({ message: '数据不可用', type: 'error' });
     return;

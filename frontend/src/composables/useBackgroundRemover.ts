@@ -441,6 +441,47 @@ export function useBackgroundRemover() {
     });
   }
 
+  /**
+   * 从草稿箱恢复：直接注入已有的 Object URLs 和 Blobs。
+   * 此方法不使用 revokeAllUrls，因为 URLs 由调用方管理生命周期。
+   */
+  function restoreFromDraft(params: {
+    resultUrl: string;
+    resultBlob: Blob;
+    originalUrl: string;
+    originalBlob?: Blob;
+    filename: string;
+    dimensions: ImageDimensions;
+    modelUsed: string;
+  }): void {
+    abortCurrent();
+    // 不调用 revokeAllUrls：URLs 由调用方（DraftDetailPage）通过 onUnmounted 管理
+    // 只清理可能存在的旧状态（初始状态通常为空）
+    if (originalUrl.value && originalUrl.value !== params.originalUrl) {
+      URL.revokeObjectURL(originalUrl.value);
+    }
+    if (resultUrl.value && resultUrl.value !== params.resultUrl) {
+      URL.revokeObjectURL(resultUrl.value);
+    }
+    currentFile.value = null;
+    transparentBlob.value = params.resultBlob;
+    resultBlob.value = params.resultBlob;
+    resultUrl.value = params.resultUrl;
+    originalUrl.value = params.originalUrl;
+    resultFilename.value = params.filename;
+    resultDimensions.value = params.dimensions;
+    modelUsed.value = params.modelUsed;
+    currentBgColor.value = 'transparent';
+    currentTemplateId.value = null;
+    preEditTransparentBlob = null;
+    Object.assign(processing, {
+      status: 'done' as const,
+      progress: 100,
+      message: '处理完成',
+      detail: '',
+    });
+  }
+
   // ---- Cleanup ----
 
   function abortCurrent(): void {
@@ -503,6 +544,7 @@ export function useBackgroundRemover() {
     processImage,
     retryCurrentFile,
     restoreFromHistory,
+    restoreFromDraft,
     reset,
     abortCurrent,
     applyBackgroundColor,

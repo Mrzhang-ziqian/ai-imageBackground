@@ -56,6 +56,19 @@ export const useUiStore = defineStore('ui', () => {
     authModalVisible.value = false;
   }
 
+  // ---- 路由记忆：登录后跳回目标页 ----
+  const pendingRoute = ref<string | null>(null);
+
+  function setPendingRoute(path: string): void {
+    pendingRoute.value = path;
+  }
+
+  function consumePendingRoute(): string | null {
+    const path = pendingRoute.value;
+    pendingRoute.value = null;
+    return path;
+  }
+
   return {
     toast: readonly(toast),
     showToast,
@@ -67,5 +80,8 @@ export const useUiStore = defineStore('ui', () => {
     authModalVisible,
     openAuthModal,
     closeAuthModal,
+    pendingRoute: readonly(pendingRoute),
+    setPendingRoute,
+    consumePendingRoute,
   };
 });

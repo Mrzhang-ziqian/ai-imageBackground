@@ -157,14 +157,25 @@ const imgState = reactive<ImgLoadingState>({
   resultError: false,
 });
 
-// 监听 URL 变化重置状态
+// 监听 URL 变化重置状态（分别跟踪，避免改 result 时原图也闪） */
 watch(
-  () => [props.originalUrl, props.resultUrl],
-  () => {
-    imgState.originalLoading = !!props.originalUrl;
-    imgState.resultLoading = !!props.resultUrl;
-    imgState.originalError = false;
-    imgState.resultError = false;
+  () => props.originalUrl,
+  (newUrl, oldUrl) => {
+    if (newUrl !== oldUrl) {
+      imgState.originalLoading = !!newUrl;
+      imgState.originalError = false;
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => props.resultUrl,
+  (newUrl, oldUrl) => {
+    if (newUrl !== oldUrl) {
+      imgState.resultLoading = !!newUrl;
+      imgState.resultError = false;
+    }
   },
   { immediate: true }
 );

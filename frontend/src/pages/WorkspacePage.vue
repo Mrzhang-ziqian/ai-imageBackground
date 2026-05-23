@@ -22,10 +22,10 @@
           />
         </template>
 
-        <!-- ========== 正常流程：4 状态模型 ========== -->
+        <!-- ========== 正常流程：上传 / 处理 / 错误 ========== -->
         <template v-else>
           <Transition name="section-fade" mode="out-in">
-            <!-- IDLE：上传区 / 配额耗尽卡片 -->
+            <!-- IDLE：上传区 -->
             <div v-if="viewState === 'idle'" key="idle">
               <UploadZone
                 v-if="!quota.isExhausted.value"
@@ -52,65 +52,17 @@
               </div>
             </div>
 
-            <!-- PROCESSING：进度预览 -->
+            <!-- PROCESSING：进度预览（仅显示处理状态，无工具面板） -->
             <div v-else-if="viewState === 'processing'" key="processing" class="result-wrapper">
-              <div class="result-layout no-tools">
-                <div class="preview-col">
-                  <PreviewGrid
-                    :original-url="remover.originalUrl.value"
-                    :result-url="remover.resultUrl.value"
-                    :bg-color="remover.currentBgColor.value"
-                    :processing="remover.processing"
-                    :result-dimensions="remover.resultDimensions.value"
-                    :model-used="remover.modelUsed.value"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <!-- DONE：预览 + 工具面板（无"重新上传"按钮） -->
-            <div v-else-if="viewState === 'done'" key="done" class="result-wrapper">
-              <div class="result-layout">
-                <div class="preview-col">
-                  <PreviewGrid
-                    :original-url="remover.originalUrl.value"
-                    :result-url="remover.resultUrl.value"
-                    :bg-color="remover.currentBgColor.value"
-                    :processing="remover.processing"
-                    :result-dimensions="remover.resultDimensions.value"
-                    :model-used="remover.modelUsed.value"
-                  />
-                  <!-- 底部胶片条：当前会话多图切换 -->
-                  <SessionFilmstrip
-                    :items="sessionItems"
-                    :active-id="activeSessionId"
-                    @select="handleSessionSelect"
-                  />
-                </div>
-                <div class="tools-col">
-                  <BackgroundColorPicker
-                    :model-value="remover.currentBgColor.value"
-                    @update:model-value="handleBgColorChange"
-                  />
-                  <BackgroundTemplatePicker
-                    :model-value="remover.currentTemplateId.value"
-                    :subject-blob="remover.transparentBlob.value"
-                    @update:model-value="handleTemplateChange"
-                  />
-                  <EdgeToolsPanel
-                    :transparent-blob="remover.transparentBlob.value"
-                    :original-url="remover.originalUrl.value"
-                    @update:result-blob="handleEdgeUpdate"
-                    @reset-edge="handleEdgeReset"
-                    @toast="ui.showToast"
-                  />
-                  <DownloadPanel
-                    :blob="remover.resultBlob.value"
-                    :transparent-blob="remover.transparentBlob.value"
-                    :filename="remover.resultFilename.value"
-                    @toast="ui.showToast"
-                  />
-                </div>
+              <div class="processing-section">
+                <PreviewGrid
+                  :original-url="remover.originalUrl.value"
+                  :result-url="remover.resultUrl.value"
+                  :bg-color="remover.currentBgColor.value"
+                  :processing="remover.processing"
+                  :result-dimensions="remover.resultDimensions.value"
+                  :model-used="remover.modelUsed.value"
+                />
               </div>
             </div>
 
@@ -194,30 +146,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '@/components/AppHeader.vue';
 import AppFooter from '@/components/AppFooter.vue';
 import ToastMessage from '@/components/ToastMessage.vue';
 import UploadZone from '@/components/UploadZone.vue';
 import PreviewGrid from '@/components/PreviewGrid.vue';
-import BackgroundColorPicker from '@/components/BackgroundColorPicker.vue';
-import BackgroundTemplatePicker from '@/components/BackgroundTemplatePicker.vue';
-import EdgeToolsPanel from '@/components/EdgeToolsPanel.vue';
-import DownloadPanel from '@/components/DownloadPanel.vue';
 import HistoryPanel from '@/components/HistoryPanel.vue';
 import BatchPanel from '@/components/BatchPanel.vue';
 import BatchProgressToast from '@/components/batch/BatchProgressToast.vue';
 import LargeImageDialog from '@/components/LargeImageDialog.vue';
 import AuthModal from '@/components/AuthModal.vue';
-import SessionFilmstrip from '@/components/SessionFilmstrip.vue';
 import { useBackgroundRemover } from '@/composables/useBackgroundRemover';
 import { useHistory } from '@/composables/useHistory';
 import { useBatchProcessor } from '@/composables/useBatchProcessor';
 import { useQuota } from '@/composables/useQuota';
 import { useAuth } from '@/composables/useAuth';
 import { useUiStore } from '@/stores/ui';
+import { useDraftsStore } from '@/stores/drafts';
 import { historyApi } from '@/services/api';
-import type { BgColor, HistoryEntry, SessionItem } from '@/types';
+import type { HistoryEntry } from '@/types';
 import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT } from '@/types';
 import { readImageDimensions, resizeImageClient, formatFileSize } from '@/utils/imageUtils';
 
@@ -228,24 +177,42 @@ const history = useHistory();
 const batch = useBatchProcessor();
 const quota = useQuota();
 const ui = useUiStore();
+const drafts = useDraftsStore();
+const router = useRouter();
+const route = useRoute();
 
 // ---- 视图模式 ----
 const viewMode = ref<'single' | 'batch'>('single');
 
-// ---- 批量进度浮窗可见性（仅当处理中且视图为 single 时显示） ----
 const batchProgressVisible = computed(() =>
   batch.isProcessing.value && viewMode.value === 'single',
 );
 
+// ---- 首次挂载 & 从草稿确认返回时加载历史 ----
+onMounted(() => {
+  // 初始化草稿箱 IndexedDB 元数据（WorkspacePage 需要 drafts.add）
+  drafts.init();
+
+  // 如果从草稿详情页确认后返回，query 会带 ?confirmed=1
+  if (route.query.confirmed === '1') {
+    history.reload();
+    quota.syncFromServer();
+    // 清除 query 参数，避免下次挂载重复加载
+    router.replace({ query: {} });
+  } else if (!history.loaded.value) {
+    // 首次加载历史（仅加载一次，避免反复拉取）
+    history.load();
+  }
+});
+
 // ---- 批量处理完成 → 自动刷新历史 ----
 watch(() => batch.allDone.value, (done) => {
   if (done) {
-    history.load();
+    history.reload();
     quota.syncFromServer();
   }
 });
 
-// ---- 批量处理每完成一项 → 同步配额 ----
 watch(
   () => batch.doneCount.value + batch.errorCount.value,
   (newVal, oldVal) => {
@@ -270,11 +237,6 @@ const isQuotaError = computed(() => /已用完/.test(remover.processing.detail))
 
 const activeHistoryId = ref<number | null>(null);
 
-// ---- 当前会话（底部胶片条） ----
-const sessionItems = ref<SessionItem[]>([]);
-const activeSessionId = ref<string | null>(null);
-let sessionIdCounter = 0;
-
 // ---- 大图提示对话框 ----
 const largeImageDialog = ref({
   visible: false,
@@ -286,106 +248,7 @@ const largeImageDialog = ref({
 });
 
 // ================================================================
-//  会话管理（胶片条 + Blob 工具）
-// ================================================================
-
-async function captureSessionItem(): Promise<void> {
-  const blob = remover.resultBlob.value;
-  const file = remover.currentFile.value;
-  if (!blob || !remover.resultUrl.value) return;
-
-  const resultDataUrl = await blobToDataUrl(blob);
-  const originalThumb = file ? await createThumbnail(file) : resultDataUrl;
-  const thumbDataUrl = await createBlobThumbnail(blob, 80);
-
-  const id = `session_${++sessionIdCounter}`;
-  const item: SessionItem = {
-    id,
-    filename: remover.resultFilename.value,
-    originalThumb,
-    resultDataUrl,
-    thumbUrl: thumbDataUrl,
-    dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
-    modelUsed: remover.modelUsed.value,
-    resultBlob: blob,
-    transparentBlob: remover.transparentBlob.value ?? blob,
-  };
-
-  sessionItems.value.push(item);
-  activeSessionId.value = id;
-}
-
-function createThumbnail(file: File, maxDim: number = 100): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const canvas = document.createElement('canvas');
-      const scale = maxDim / Math.max(img.width, img.height);
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.7));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
-    img.src = url;
-  });
-}
-
-function createBlobThumbnail(blob: Blob, maxDim: number = 80): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const canvas = document.createElement('canvas');
-      const scale = maxDim / Math.max(img.width, img.height);
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.6));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
-    img.src = url;
-  });
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('Blob 读取失败'));
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function handleSessionSelect(id: string): Promise<void> {
-  if (id === activeSessionId.value) return;
-
-  const currentItem = sessionItems.value.find((s) => s.id === activeSessionId.value);
-  if (currentItem && remover.resultBlob.value) {
-    currentItem.resultDataUrl = await blobToDataUrl(remover.resultBlob.value);
-    currentItem.transparentBlob = remover.transparentBlob.value ?? remover.resultBlob.value;
-  }
-
-  const item = sessionItems.value.find((s) => s.id === id);
-  if (!item) return;
-
-  remover.restoreFromHistory({
-    originalDataUrl: item.originalThumb,
-    resultDataUrl: item.resultDataUrl,
-    filename: item.filename,
-    dimensions: item.dimensions,
-    modelUsed: item.modelUsed,
-  });
-
-  activeSessionId.value = id;
-  activeHistoryId.value = null;
-}
-
-// ================================================================
-//  文件上传 & 处理
+//  文件上传 & 处理 → 跳转到草稿详情页
 // ================================================================
 
 async function handleFileSelected(file: File): Promise<void> {
@@ -431,11 +294,75 @@ async function doProcessFile(file: File): Promise<void> {
     return;
   }
   if (remover.processing.status === 'done') {
+    // 保存到草稿箱
+    const draftId = generateDraftId();
+    const resultBlob = remover.resultBlob.value;
+    if (!resultBlob) return;
+
     await quota.afterSuccessfulRequest();
-    ui.showToast({ message: '背景移除成功！', type: 'success' });
-    await history.load();
-    await captureSessionItem();
+
+    // 创建缩略图
+    const thumbUrl = await createBlobThumbnail(resultBlob, 100);
+    const origThumbUrl = await createOriginalThumbnail(file, 100);
+
+    await drafts.add(
+      {
+        id: draftId,
+        filename: remover.resultFilename.value,
+        thumbnailUrl: origThumbUrl,
+        resultThumbUrl: thumbUrl,
+        dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
+        modelUsed: remover.modelUsed.value,
+        createdAt: Date.now(),
+      },
+      resultBlob,
+      file, // 原图 Blob 存 IndexedDB 用于对比
+    );
+
+    // 跳转到草稿详情页
+    router.push(`/workspace/draft/${draftId}`);
   }
+}
+
+let draftIdCounter = 0;
+function generateDraftId(): string {
+  return `draft_${Date.now()}_${++draftIdCounter}`;
+}
+
+function createBlobThumbnail(blob: Blob, maxDim: number = 100): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      const scale = maxDim / Math.max(img.width, img.height);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+    img.src = url;
+  });
+}
+
+function createOriginalThumbnail(file: File, maxDim: number = 100): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      const scale = maxDim / Math.max(img.width, img.height);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
+    img.src = url;
+  });
 }
 
 async function handleLargeImageResize(): Promise<void> {
@@ -470,7 +397,7 @@ function handleLargeImageCancel(): void {
 }
 
 // ================================================================
-//  批量 → 单图桥接
+//  批量 → 单图桥接（现在跳转到草稿详情页）
 // ================================================================
 
 function handleBatchViewDetail(itemId: string): void {
@@ -479,29 +406,26 @@ function handleBatchViewDetail(itemId: string): void {
     ui.showToast({ message: '无法加载该结果', type: 'error' });
     return;
   }
-  remover.reset();
-  viewMode.value = 'single';
-  history.load();
-  quota.syncFromServer();
-  setTimeout(() => loadBatchResultIntoRemover(data), 50);
-}
 
-function loadBatchResultIntoRemover(data: {
-  originalDataUrl: string; resultDataUrl: string; filename: string;
-  file: File; dimensions: { width: number; height: number };
-  modelUsed: string; resultBlob: Blob;
-}): void {
-  remover.reset();
-  const origUrl = URL.createObjectURL(data.file);
+  // 批量处理结果也保存为草稿
+  const draftId = generateDraftId();
   const reader = new FileReader();
-  reader.onload = () => {
-    remover.restoreFromHistory({
-      originalDataUrl: origUrl,
-      resultDataUrl: reader.result as string,
-      filename: data.filename,
-      dimensions: data.dimensions,
-      modelUsed: data.modelUsed,
-    });
+  reader.onload = async () => {
+    const thumbUrl = reader.result as string;
+    await drafts.add(
+      {
+        id: draftId,
+        filename: data.filename,
+        thumbnailUrl: thumbUrl,
+        resultThumbUrl: thumbUrl,
+        dimensions: data.dimensions,
+        modelUsed: data.modelUsed,
+        createdAt: Date.now(),
+      },
+      data.resultBlob,
+      data.file,
+    );
+    router.push(`/workspace/draft/${draftId}`);
   };
   reader.readAsDataURL(data.resultBlob);
 }
@@ -511,21 +435,18 @@ function loadBatchResultIntoRemover(data: {
 // ================================================================
 
 async function handleBackToUpload(): Promise<void> {
-  // 处理中 → 切换视图，显示后台进度浮窗
   if (batch.isProcessing.value) {
     viewMode.value = 'single';
     remover.reset();
     ui.showToast({ message: '文件仍在后台处理中，完成后可在历史记录查看', type: 'success' });
     return;
   }
-  // 已完成 → 保留结果，仅切换
   if (batch.phase.value === 'done') {
     viewMode.value = 'single';
     remover.reset();
-    await Promise.all([history.load(), quota.syncFromServer()]);
+    await Promise.all([history.reload(), quota.syncFromServer()]);
     return;
   }
-  // 入口阶段 → 销毁
   batch.destroy();
   viewMode.value = 'single';
   remover.reset();
@@ -535,15 +456,13 @@ function handleBatchReset(): void {
   batch.destroy();
   viewMode.value = 'single';
   remover.reset();
-  history.load();
+  history.reload();
   quota.syncFromServer();
 }
 
 function doReset(): void {
   remover.reset();
   activeHistoryId.value = null;
-  activeSessionId.value = null;
-  sessionItems.value = [];
   viewMode.value = 'single';
 }
 
@@ -562,9 +481,32 @@ async function handleRetry(): Promise<void> {
     return;
   }
   if (remover.processing.status === 'done') {
+    // 重试成功后也保存为草稿并跳转
+    const resultBlob = remover.resultBlob.value;
+    if (!resultBlob) return;
+
     await quota.afterSuccessfulRequest();
-    await history.load();
-    await captureSessionItem();
+
+    const draftId = generateDraftId();
+    const thumbUrl = await createBlobThumbnail(resultBlob, 100);
+    const file = remover.currentFile.value;
+    const origThumb = file ? await createOriginalThumbnail(file, 100) : thumbUrl;
+
+    await drafts.add(
+      {
+        id: draftId,
+        filename: remover.resultFilename.value,
+        thumbnailUrl: origThumb,
+        resultThumbUrl: thumbUrl,
+        dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
+        modelUsed: remover.modelUsed.value,
+        createdAt: Date.now(),
+      },
+      resultBlob,
+      file ?? undefined,
+    );
+
+    router.push(`/workspace/draft/${draftId}`);
     ui.showToast({ message: '重试成功！', type: 'success' });
   }
 }
@@ -573,47 +515,57 @@ function handleValidationError(error: string): void {
   ui.showToast({ message: error, type: 'error' });
 }
 
-async function handleBgColorChange(color: BgColor): Promise<void> {
-  const err = await remover.applyBackgroundColor(color);
-  if (err) ui.showToast({ message: err, type: 'error' });
-}
-
-async function handleTemplateChange(templateId: string | null): Promise<void> {
-  const err = await remover.applyTemplate(templateId);
-  if (err) ui.showToast({ message: err, type: 'error' });
-}
-
-function handleEdgeUpdate(blob: Blob): void {
-  remover.updateTransparentBlob(blob);
-}
-
-function handleEdgeReset(): void {
-  remover.resetEdgeEdits();
-  ui.showToast({ message: '已撤销边缘修改', type: 'success' });
-}
-
 async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
-  if (entry.status === 'blocked') return;
+  // 若正在处理中，先重置
+  if (remover.processing.status !== 'idle') {
+    remover.reset();
+  }
+
+  if (entry.status === 'blocked') {
+    ui.showToast({ message: '该记录因配额耗尽而被阻止，无法恢复', type: 'error' });
+    return;
+  }
+
   try {
+    ui.showToast({ message: '正在加载历史记录...', type: 'success' });
+
     const resultBlob = await historyApi.getResult(entry.id);
+    if (!resultBlob || resultBlob.size === 0) {
+      ui.showToast({ message: '历史记录文件已丢失，请重新上传', type: 'error' });
+      return;
+    }
+
     const resultDataUrl = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = () => reject(new Error('读取结果失败'));
       reader.readAsDataURL(resultBlob);
     });
-    remover.restoreFromHistory({
-      originalDataUrl: entry.originalThumb,
-      resultDataUrl,
-      filename: entry.filename,
-      dimensions: { width: entry.width, height: entry.height },
-      modelUsed: entry.modelUsed,
-    });
+
+    // 历史恢复也保存为草稿（方便编辑后再确认）
+    const draftId = generateDraftId();
+    await drafts.add(
+      {
+        id: draftId,
+        filename: entry.filename,
+        thumbnailUrl: entry.originalThumb,
+        resultThumbUrl: resultDataUrl,
+        dimensions: { width: entry.width, height: entry.height },
+        modelUsed: entry.modelUsed,
+        createdAt: Date.now(),
+      },
+      resultBlob,
+    );
+
     activeHistoryId.value = entry.id;
-    activeSessionId.value = null;
+    router.push(`/workspace/draft/${draftId}`);
     ui.showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
   } catch (err) {
-    ui.showToast({ message: err instanceof Error ? err.message : '加载历史记录失败', type: 'error' });
+    console.error('History restore error:', err);
+    ui.showToast({
+      message: err instanceof Error ? `加载失败: ${err.message}` : '加载历史记录失败，请检查网络连接后重试',
+      type: 'error',
+    });
   }
 }
 
@@ -655,32 +607,9 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
   flex-direction: column;
 }
 
-.result-layout {
-  display: grid;
-  grid-template-columns: 1fr 360px;
-  gap: 28px;
-  align-items: start;
-}
-
-.preview-col {
-  position: sticky;
-  top: 24px;
-  min-width: 0;
-}
-
-.tools-col {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.result-layout.no-tools {
-  grid-template-columns: 1fr;
-}
-
-.result-layout.no-tools .tools-col {
-  display: none;
+.processing-section {
+  max-width: 720px;
+  margin: 0 auto;
 }
 
 /* 错误卡片 */
@@ -821,16 +750,8 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
 .btn-back-mode:hover { background: #f9fafb; color: #374151; border-color: #d1d5db; }
 
 /* 响应式 */
-@media (max-width: 900px) {
-  .result-layout { grid-template-columns: 1fr; gap: 20px; }
-  .preview-col { position: static; }
-  .tools-col { gap: 14px; }
-}
-
 @media (max-width: 640px) {
   .main { padding-bottom: 32px; }
-  .result-layout { gap: 14px; }
-  .tools-col { gap: 10px; }
   .error-card { padding: 20px 16px; gap: 8px; margin-bottom: 16px; border-radius: 12px; }
   .error-title { font-size: 15px; }
   .error-detail { font-size: 12px; }
@@ -842,8 +763,6 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
 
 @media (max-width: 480px) {
   .main { padding-bottom: 20px; }
-  .result-layout { gap: 10px; }
-  .tools-col { gap: 8px; }
   .error-actions { flex-direction: column; width: 100%; }
   .btn-retry, .btn-new-upload { width: 100%; }
 }

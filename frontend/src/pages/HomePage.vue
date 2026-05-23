@@ -16,8 +16,6 @@
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue';
-import { useRouter } from 'vue-router';
 import LandingPage from '@/components/LandingPage.vue';
 import AuthModal from '@/components/AuthModal.vue';
 import { useAuth } from '@/composables/useAuth';
@@ -25,18 +23,7 @@ import { useUiStore } from '@/stores/ui';
 
 const auth = useAuth();
 const ui = useUiStore();
-const router = useRouter();
-
-// 已登录自动跳转
-watch(
-  () => auth.isLoggedIn.value,
-  (val) => {
-    if (val) {
-      router.replace('/workspace');
-    }
-  },
-  { immediate: true },
-);
+// 登录跳转由 App.vue 全局处理，HomePage 仅负责渲染
 </script>
 
 <style scoped>
