@@ -16,6 +16,8 @@ export function useImageZoom() {
   const panY = ref(0);
   const isDragging = ref(false);
   const lastPointer = ref<{ x: number; y: number } | null>(null);
+  const capturedPointerId = ref(-1);
+  const lastWheelTime = ref(0);
 
   // 缩放边界
   const MIN_SCALE = 1;
@@ -41,8 +43,13 @@ export function useImageZoom() {
     };
   }
 
-  /** 滚轮缩放（焦点跟随鼠标位置）。到达边界时不阻止默认滚动。 */
+  /** 滚轮缩放（焦点跟随鼠标位置）。到达边界时不阻止默认滚动。T26: 16ms 节流 */
   function onWheel(e: WheelEvent): void {
+    // 节流：高频率触控板滚动时限制为每 16ms 一次（~60fps）
+    const now = performance.now();
+    if (now - lastWheelTime.value < 16) return;
+    lastWheelTime.value = now;
+
     const oldScale = scale.value;
     const coords = getContainerCoords(e);
     const dir = e.deltaY < 0 ? 1 : -1;
@@ -63,12 +70,28 @@ export function useImageZoom() {
     clampPan();
   }
 
-  /** 缩放超出边界时回弹 */
+  /** 拖拽平移边界约束：确保至少 30% 的图像在容器内可见 */
   function clampPan(): void {
-    if (scale.value <= 1) {
+    const s = scale.value;
+    if (s <= 1.05) {
       panX.value = 0;
       panY.value = 0;
+      return;
     }
+    // 容器尺寸（若未绑定则跳过）
+    const rect = containerEl.value?.getBoundingClientRect();
+    if (!rect) return;
+    const cw = rect.width;
+    const ch = rect.height;
+    // 缩放后的图像尺寸（假设 img 宽高填充容器 100%）
+    const iw = cw * s;
+    const ih = ch * s;
+    // 允许拖出边界的最大距离（图像至少 30% 可见）
+    const margin = 0.3;
+    const maxPanX = Math.max(0, iw - cw * (1 - margin));
+    const maxPanY = Math.max(0, ih - ch * (1 - margin));
+    panX.value = Math.max(-maxPanX, Math.min(maxPanX, panX.value));
+    panY.value = Math.max(-maxPanY, Math.min(maxPanY, panY.value));
   }
 
   // ---- Pointer Events（拖拽 + 双指） ----
@@ -76,12 +99,15 @@ export function useImageZoom() {
   function onPointerDown(e: PointerEvent): void {
     if (scale.value <= 1) return;
     containerEl.value?.setPointerCapture(e.pointerId);
+    capturedPointerId.value = e.pointerId;
     lastPointer.value = { x: e.clientX, y: e.clientY };
     isDragging.value = true;
   }
 
   function onPointerMove(e: PointerEvent): void {
     if (!isDragging.value || !lastPointer.value) return;
+
+    e.preventDefault();
 
     const dx = e.clientX - lastPointer.value.x;
     const dy = e.clientY - lastPointer.value.y;
@@ -94,8 +120,13 @@ export function useImageZoom() {
   }
 
   function onPointerUp(): void {
+    if (!isDragging.value) return;
+    if (containerEl.value && capturedPointerId.value >= 0) {
+      try { containerEl.value.releasePointerCapture(capturedPointerId.value); } catch { /* 已被隐式释放 */ }
+    }
     isDragging.value = false;
     lastPointer.value = null;
+    capturedPointerId.value = -1;
     clampPan();
   }
 
@@ -128,6 +159,8 @@ export function useImageZoom() {
     panY.value = 0;
     isDragging.value = false;
     lastPointer.value = null;
+    capturedPointerId.value = -1;
+    lastWheelTime.value = 0;
   }
 
   // ---- Computed ----
@@ -136,12 +169,17 @@ export function useImageZoom() {
 
   const zoomPercent = computed(() => Math.round(scale.value * 100) + '%');
 
-  /** 直接应用于 img 标签的 style 对象 */
-  const imgTransform = computed(() => ({
-    transform: `translate(${panX.value}px, ${panY.value}px) scale(${scale.value})`,
-    transformOrigin: '0 0',
-    cursor: scale.value > 1.05 ? (isDragging.value ? 'grabbing' : 'grab') : 'default',
-  }));
+  /** 直接应用于 img 标签的 style 对象。T31: scale=1 时不生成 transform 避免无谓合成层 */
+  const imgTransform = computed(() => {
+    if (scale.value <= 1.05 && panX.value === 0 && panY.value === 0) {
+      return { cursor: 'default' as const };
+    }
+    return {
+      transform: `translate(${panX.value}px, ${panY.value}px) scale(${scale.value})`,
+      transformOrigin: '0 0',
+      cursor: scale.value > 1.05 ? (isDragging.value ? 'grabbing' : 'grab') : 'default',
+    };
+  });
 
   const containerCursor = computed(() =>
     scale.value > 1.05 ? (isDragging.value ? 'grabbing' : 'grab') : 'default',
@@ -154,7 +192,7 @@ export function useImageZoom() {
       panX.value = 0;
       panY.value = 0;
     }
-    clampPan();
+    // 缩放>1 时 clampPan 已在内部处理边界，无需重复调用
   }
 
   return {

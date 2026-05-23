@@ -10,7 +10,7 @@ from models import User, History
 # 保留的账号
 KEEP_EMAILS = {"admin@admin.com", "test@test.com"}
 
-HISTORY_DIR = "data/history"
+HISTORY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "history")
 
 
 async def cleanup():
@@ -31,14 +31,20 @@ async def cleanup():
                 await db.execute(delete(History).where(History.user_id == user.id))
                 user_dir = os.path.join(HISTORY_DIR, str(user.id))
                 if os.path.isdir(user_dir):
-                    shutil.rmtree(user_dir, ignore_errors=True)
-                    print(f"[CLEAN] 已删除历史文件: {user_dir}")
+                    try:
+                        shutil.rmtree(user_dir)
+                        print(f"[CLEAN] 已删除历史文件: {user_dir}")
+                    except OSError as e:
+                        print(f"[WARN] 删除历史文件失败 {user_dir}: {e}")
             else:
                 # 非保留用户 → 彻底删除
                 user_dir = os.path.join(HISTORY_DIR, str(user.id))
                 if os.path.isdir(user_dir):
-                    shutil.rmtree(user_dir, ignore_errors=True)
-                    print(f"[CLEAN] 已删除历史文件: {user_dir}")
+                    try:
+                        shutil.rmtree(user_dir)
+                        print(f"[CLEAN] 已删除历史文件: {user_dir}")
+                    except OSError as e:
+                        print(f"[WARN] 删除历史文件失败 {user_dir}: {e}")
 
                 await db.delete(user)
                 deleted_count += 1

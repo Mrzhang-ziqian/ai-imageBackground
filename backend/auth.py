@@ -53,14 +53,16 @@ def hash_password(plain: str) -> str:
 # ---------- Daily Quota Reset ----------
 
 async def check_and_reset_quota(user: User, db: AsyncSession) -> None:
-    """如果 quota_date 不是今天，重置 quota_used 为 0 并更新日期。"""
+    """如果 quota_date 不是今天，重置 quota_used 为 0 并更新日期。
+    P1-9: 使用 flush() 而非 commit()，避免隐式提交主事务中其他未完成更改。
+    配额重置将在主流程的 save_history_entry commit() 时一并持久化。"""
     if user.plan != "free":
         return
     today = date.today()
     if user.quota_date != today:
         user.quota_used = 0
         user.quota_date = today
-        await db.commit()
+        await db.flush()
 
 
 # ---------- Dependencies ----------

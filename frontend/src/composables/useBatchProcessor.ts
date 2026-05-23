@@ -24,6 +24,13 @@ export function useBatchProcessor() {
   const currentIndex = ref(-1);
 
   let batchAbortController: AbortController | null = null;
+  let retryAbortController: AbortController | null = null;
+  /** P1-7: 并发重试守卫，防止快速点击多个重试按钮导致行为不可预测 */
+  let _retryInProgress = false;
+  /** T39: 跟踪 getBatchResultData 创建的 Blob URL，防止泄漏 */
+  const _trackedResultUrls = new Set<string>();
+  /** T37: 跟踪 downloadAll 的 setTimeout ID，destroy() 时清除 */
+  const _downloadTimers = new Set<ReturnType<typeof setTimeout>>();
 
   // ---- Computed ----
   const totalCount = computed(() => items.length);
@@ -41,13 +48,18 @@ export function useBatchProcessor() {
 
   /**
    * 向队列添加文件。
-   * 去重：相同 name + size 的文件不重复添加。
+   * 去重：相同 name + size + lastModified 的文件不重复添加。
+   * T49: 增加 lastModified 维度，避免修改后重新选择的同一文件被误判为重复。
    */
   function addFiles(files: File[]): number {
     let added = 0;
     for (const file of files) {
-      // 去重
-      if (items.some((i) => i.file.name === file.name && i.file.size === file.size)) {
+      // 去重（name + size + lastModified 三重判断）
+      if (items.some((i) =>
+        i.file.name === file.name &&
+        i.file.size === file.size &&
+        i.file.lastModified === file.lastModified
+      )) {
         continue;
       }
       const item: BatchItem = {
@@ -77,6 +89,7 @@ export function useBatchProcessor() {
     const item = items[idx];
     // 清理资源
     if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
+    // T40: resultBlob 本身不需要 revoke，但需置空触发 GC
     if (item.resultBlob) item.resultBlob = null;
 
     items.splice(idx, 1);
@@ -86,7 +99,8 @@ export function useBatchProcessor() {
   function clearItems(): void {
     for (const item of items) {
       if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
-      if (item.resultUrl) URL.revokeObjectURL(item.resultUrl);
+      // T48: BatchItem 类型无 resultUrl 属性 → 移除死代码
+      if (item.resultBlob) item.resultBlob = null;
     }
     items.length = 0;
     currentIndex.value = -1;
@@ -164,10 +178,14 @@ export function useBatchProcessor() {
     }
   }
 
-  /** 重试单个失败项 */
+  /** 重试单个失败项。T38: AbortController 存储在实例变量中，支持外部取消。
+   *  P1-7: _retryInProgress 守卫防止并发重试。 */
   async function retryItem(id: string): Promise<void> {
+    if (_retryInProgress) return;
     const item = items.find((i) => i.id === id);
     if (!item || item.status !== 'error') return;
+
+    _retryInProgress = true;
 
     // 重置状态
     item.status = 'queued';
@@ -176,12 +194,14 @@ export function useBatchProcessor() {
     item.error = null;
     item.resultBlob = null;
 
-    // 创建独立的 abort controller
-    const controller = new AbortController();
+    // T38: 存储在实例变量中，destroy() 可通过它中止重试
+    retryAbortController = new AbortController();
 
     try {
-      await processOneItem(item, controller.signal);
+      await processOneItem(item, retryAbortController.signal);
     } finally {
+      _retryInProgress = false;
+      retryAbortController = null;
       // 如果当前不是 processing 阶段，检查是否所有项都完成了
       if (allDone.value) {
         phase.value = 'done';
@@ -189,13 +209,16 @@ export function useBatchProcessor() {
     }
   }
 
-  /** 重试所有失败项 */
+  /** 重试所有失败项。P2-4: _retryInProgress 守卫防止与 cancelProcessing 状态竞争。 */
   async function retryAllErrors(): Promise<void> {
+    if (_retryInProgress) return;
     const errorItems = items.filter((i) => i.status === 'error');
     if (errorItems.length === 0) return;
 
+    _retryInProgress = true;
     phase.value = 'processing';
-    const controller = new AbortController();
+    // T38: 存储在实例变量中
+    retryAbortController = new AbortController();
 
     // 重置所有失败项状态
     for (const item of errorItems) {
@@ -207,14 +230,16 @@ export function useBatchProcessor() {
     }
 
     for (const item of errorItems) {
-      if (controller.signal.aborted) break;
+      if (retryAbortController.signal.aborted) break;
       currentIndex.value = items.indexOf(item);
-      await processOneItem(item, controller.signal);
+      await processOneItem(item, retryAbortController.signal);
     }
 
-    if (!controller.signal.aborted) {
+    if (!retryAbortController.signal.aborted) {
       phase.value = 'done';
     }
+    _retryInProgress = false;
+    retryAbortController = null;
   }
 
   /** 取消当前正在处理的批次 */
@@ -223,6 +248,12 @@ export function useBatchProcessor() {
       batchAbortController.abort();
       batchAbortController = null;
     }
+    // P1-8: 中止正在进行的重试
+    if (retryAbortController) {
+      retryAbortController.abort();
+      retryAbortController = null;
+    }
+    _retryInProgress = false;
     // 将队列中未开始的项目标记为 queued（保留已完成的）
     for (const item of items) {
       if (item.status === 'uploading' || item.status === 'processing') {
@@ -236,7 +267,7 @@ export function useBatchProcessor() {
 
   // ---- Result Access ----
 
-  /** 获取处理结果，用于传入单图模式 */
+  /** 获取处理结果，用于传入单图模式。T39: 跟踪返回的 Blob URL，调用方需手动 revoke。 */
   function getBatchResultData(id: string): {
     originalDataUrl: string;
     resultDataUrl: string;
@@ -249,15 +280,24 @@ export function useBatchProcessor() {
     const item = items.find((i) => i.id === id);
     if (!item || item.status !== 'done' || !item.resultBlob) return null;
 
+    const resultUrl = URL.createObjectURL(item.resultBlob);
+    _trackedResultUrls.add(resultUrl);  // T39: 跟踪所有创建的 Blob URL
+
     return {
       originalDataUrl: item.originalUrl,
-      resultDataUrl: URL.createObjectURL(item.resultBlob),
+      resultDataUrl: resultUrl,
       filename: item.resultFilename || `removed_${item.file.name}`,
       file: item.file,
       dimensions: item.dimensions || { width: 0, height: 0 },
       modelUsed: item.modelUsed,
       resultBlob: item.resultBlob,
     };
+  }
+
+  /** 释放 getBatchResultData 返回的 Object URL */
+  function revokeBatchResultUrl(url: string): void {
+    URL.revokeObjectURL(url);
+    _trackedResultUrls.delete(url);  // T39: 同步清理跟踪集合
   }
 
   // ---- Bulk Download ----
@@ -306,7 +346,8 @@ export function useBatchProcessor() {
     if (doneItems.length === 0) return;
 
     doneItems.forEach((item, index) => {
-      setTimeout(() => {
+      const timerId = setTimeout(() => {
+        _downloadTimers.delete(timerId);  // T37: 执行后从追踪集合移除
         if (!item.resultBlob) return;
         const url = URL.createObjectURL(item.resultBlob);
         const a = document.createElement('a');
@@ -317,6 +358,7 @@ export function useBatchProcessor() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }, index * 300); // 逐个下载，间隔 300ms
+      _downloadTimers.add(timerId);  // T37: 存储 timer ID，destroy() 时清理
     });
   }
 
@@ -324,6 +366,21 @@ export function useBatchProcessor() {
 
   function destroy(): void {
     cancelProcessing();
+    // T38: 中止正在进行的重试
+    if (retryAbortController) {
+      retryAbortController.abort();
+      retryAbortController = null;
+    }
+    // T37: 清除所有未触发的 downloadAll 定时器
+    for (const timerId of _downloadTimers) {
+      clearTimeout(timerId);
+    }
+    _downloadTimers.clear();
+    // T39: 释放所有 tracked Blob URL
+    for (const url of _trackedResultUrls) {
+      URL.revokeObjectURL(url);
+    }
+    _trackedResultUrls.clear();
     for (const item of items) {
       if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
     }
@@ -351,6 +408,7 @@ export function useBatchProcessor() {
     retryItem,
     retryAllErrors,
     getBatchResultData,
+    revokeBatchResultUrl,
     downloadAll,
     downloadAsZip,
     destroy,

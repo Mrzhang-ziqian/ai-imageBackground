@@ -257,6 +257,7 @@ async function handleConfirm(): Promise<void> {
     // 保存当前的编辑结果到草稿（确保 IndexedDB 存储了最新版本）
     const draftId = route.params.id as string;
     if (remover.resultBlob.value) {
+      // T15: 缩略图生成跳过——updateResult 后立即 remove，缩略图浪费
       await drafts.updateResult(draftId, remover.resultBlob.value);
     }
     // 同步配额

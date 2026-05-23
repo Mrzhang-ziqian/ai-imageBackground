@@ -91,7 +91,7 @@ export function formatFileSize(bytes: number): string {
  * 从图片 Blob/File 生成缩略图 Data URL。
  * @param source  图片源（Blob 或 File，通过 URL.createObjectURL 加载）
  * @param maxDim  缩略图最大边长，默认 100px
- * @returns JPEG data URL，加载失败返回空字符串
+ * @returns data URL（保持源格式：PNG→PNG，JPEG→JPEG，其他→PNG），加载失败返回空字符串
  */
 export function createThumbnail(source: Blob | File, maxDim: number = 100): Promise<string> {
   return new Promise((resolve) => {
@@ -107,7 +107,10 @@ export function createThumbnail(source: Blob | File, maxDim: number = 100): Prom
       if (ctx) {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       }
-      resolve(canvas.toDataURL('image/jpeg', 0.7));
+      // 根据源类型选择输出格式，保留透明度
+      const sourceType = source.type || '';
+      const isJpeg = sourceType.includes('jpeg') || sourceType.includes('jpg');
+      resolve(canvas.toDataURL(isJpeg ? 'image/jpeg' : 'image/png', isJpeg ? 0.7 : undefined));
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);

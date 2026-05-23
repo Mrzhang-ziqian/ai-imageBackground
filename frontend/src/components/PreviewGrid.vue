@@ -48,7 +48,7 @@
           :ref="singleZoom.initContainer"
           class="zoom-container"
           :style="{ cursor: singleZoom.containerCursor.value }"
-          @wheel.prevent="singleZoom.onWheel"
+          @wheel="singleZoom.onWheel"
           @pointerdown="singleZoom.onPointerDown"
           @pointermove="singleZoom.onPointerMove"
           @pointerup="singleZoom.onPointerUp"
@@ -65,13 +65,7 @@
             :style="singleZoom.imgTransform.value"
           />
         </div>
-        <!-- 缩放控件 -->
-        <div v-if="singleZoom.isZoomed.value" class="zoom-controls">
-          <button class="zoom-btn" @click="singleZoom.zoomTo(Math.max(1, singleZoom.scale.value - 0.5))" title="缩小">−</button>
-          <span class="zoom-label">{{ singleZoom.zoomPercent.value }}</span>
-          <button class="zoom-btn" @click="singleZoom.zoomTo(Math.min(4, singleZoom.scale.value + 0.5))" title="放大">+</button>
-          <button class="zoom-btn zoom-reset" @click="singleZoom.resetZoom()" title="重置">1:1</button>
-        </div>
+        <ZoomControls :zoom="singleZoom" />
         <div v-if="imgState.resultError" class="broken-box">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -99,7 +93,7 @@
             :ref="originalZoom.initContainer"
             class="zoom-container"
             :style="{ cursor: originalZoom.containerCursor.value }"
-            @wheel.prevent="originalZoom.onWheel"
+            @wheel="originalZoom.onWheel"
             @pointerdown="originalZoom.onPointerDown"
             @pointermove="originalZoom.onPointerMove"
             @pointerup="originalZoom.onPointerUp"
@@ -116,13 +110,7 @@
               :style="originalZoom.imgTransform.value"
             />
           </div>
-          <!-- 缩放控件 -->
-          <div v-if="originalZoom.isZoomed.value" class="zoom-controls">
-            <button class="zoom-btn" @click="originalZoom.zoomTo(Math.max(1, originalZoom.scale.value - 0.5))" title="缩小">−</button>
-            <span class="zoom-label">{{ originalZoom.zoomPercent.value }}</span>
-            <button class="zoom-btn" @click="originalZoom.zoomTo(Math.min(4, originalZoom.scale.value + 0.5))" title="放大">+</button>
-            <button class="zoom-btn zoom-reset" @click="originalZoom.resetZoom()" title="重置">1:1</button>
-          </div>
+          <ZoomControls :zoom="originalZoom" />
           <div v-if="imgState.originalError" class="broken-box">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -145,7 +133,7 @@
             :ref="splitResultZoom.initContainer"
             class="zoom-container"
             :style="{ cursor: splitResultZoom.containerCursor.value }"
-            @wheel.prevent="splitResultZoom.onWheel"
+            @wheel="splitResultZoom.onWheel"
             @pointerdown="splitResultZoom.onPointerDown"
             @pointermove="splitResultZoom.onPointerMove"
             @pointerup="splitResultZoom.onPointerUp"
@@ -162,13 +150,7 @@
               :style="splitResultZoom.imgTransform.value"
             />
           </div>
-          <!-- 缩放控件 -->
-          <div v-if="splitResultZoom.isZoomed.value" class="zoom-controls">
-            <button class="zoom-btn" @click="splitResultZoom.zoomTo(Math.max(1, splitResultZoom.scale.value - 0.5))" title="缩小">−</button>
-            <span class="zoom-label">{{ splitResultZoom.zoomPercent.value }}</span>
-            <button class="zoom-btn" @click="splitResultZoom.zoomTo(Math.min(4, splitResultZoom.scale.value + 0.5))" title="放大">+</button>
-            <button class="zoom-btn zoom-reset" @click="splitResultZoom.resetZoom()" title="重置">1:1</button>
-          </div>
+          <ZoomControls :zoom="splitResultZoom" />
           <div v-if="imgState.resultError" class="broken-box">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -209,6 +191,7 @@ import { ref, computed, reactive, watch } from 'vue';
 import type { ProcessingState, BgColor, ImageDimensions } from '@/types';
 import ProgressOverlay from './ProgressOverlay.vue';
 import CompareSlider from './CompareSlider.vue';
+import ZoomControls from './ZoomControls.vue';
 import { useImageZoom } from '@/composables/useImageZoom';
 
 const props = defineProps<{
@@ -439,18 +422,6 @@ function onError(type: 'original' | 'result') {
     0 0, 0 8px, 8px -8px, -8px 0px;
 }
 
-.preview-box img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  opacity: 0;
-  transition: opacity 0.4s ease;
-}
-
-.preview-box img.loaded {
-  opacity: 1;
-}
-
 /* ---- shimmer 流光骨架 ---- */
 .shimmer-box {
   position: absolute;
@@ -504,71 +475,5 @@ function onError(type: 'original' | 'result') {
 
 .zoom-container img.loaded {
   opacity: 1;
-}
-
-/* 缩放控件 */
-.zoom-controls {
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(8px);
-  border-radius: 10px;
-  padding: 4px 6px;
-  z-index: 5;
-  animation: zoom-ctrl-in 0.2s ease;
-}
-
-@keyframes zoom-ctrl-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
-.zoom-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-  line-height: 1;
-}
-
-.zoom-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.zoom-btn:active {
-  background: rgba(255, 255, 255, 0.28);
-}
-
-.zoom-reset {
-  font-size: 12px;
-  font-weight: 500;
-  padding: 0 8px;
-  width: auto;
-  margin-left: 4px;
-  border-left: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 0 7px 7px 0;
-}
-
-.zoom-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-  min-width: 38px;
-  text-align: center;
-  user-select: none;
 }
 </style>

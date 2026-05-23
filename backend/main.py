@@ -36,7 +36,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(),           # 输出到 stderr（终端可见）
-        logging.FileHandler("backend.log", mode="a", encoding="utf-8"),  # 写入文件
     ],
 )
 logger = logging.getLogger(__name__)
@@ -72,6 +71,7 @@ app.include_router(auth_router)
 app.include_router(history_router)
 
 # ---------- 常量 ----------
+IS_DEV = os.environ.get("ENV", "production").lower() in ("dev", "development")
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 # FastAPI 请求体大小限制（先于内存读取）
@@ -177,8 +177,9 @@ async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if not IS_DEV:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 
@@ -186,6 +187,22 @@ async def security_headers_middleware(request: Request, call_next):
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "AI Background Remover"}
+
+
+# ---------- 配额回滚（AI 失败时退还已扣配额） ----------
+# T18+T34（修正）: 当前架构下，配额扣减（UPDATE quota_used = quota_used + 1）
+# 发生在主请求的 DB 会话中，未显式 commit()。save_history_entry 内部会 commit()
+# 将该 UPDATE 一并持久化。若 AI 失败：
+#   - 如果 save_history_entry 尚未被调用 → 主事务未提交 → get_db 回滚 → 配额自动退还
+#   - 如果 save_history_entry 已被调用 → 配额已提交持久化（但后续代码几乎无失败点）
+# 因此本函数仅需记录审计日志，无需执行 DB 写操作。
+# 注意：切勿使用独立 DB 会话执行 UPDATE — 会与主会话的写锁冲突（SQLite 串行化），
+#       且独立会话看到的是主会话修改前的值，UPDATE 会错误扣减配额。
+async def _rollback_quota(user: User):
+    """T18+T34: 记录 AI 处理失败时的配额回滚审计日志。"""
+    if user.plan != "free":
+        return
+    logger.info(f"配额审计回滚（事务级）: user_id={user.id} email={user.email}")
 
 
 # ---------- 文件魔数校验 ----------
@@ -196,17 +213,42 @@ def _validate_magic_bytes(raw: bytes) -> str | None:
     if len(raw) >= 3 and raw[:3] == b'\xff\xd8\xff':
         return 'image/jpeg'
     if len(raw) >= 12 and raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
+        # T46+P1-2: 校验 WebP 文件完整性 — 损坏文件直接拒绝
+        import struct
+        try:
+            declared_size = struct.unpack_from('<I', raw, 4)[0]
+            if declared_size + 8 != len(raw):
+                logger.warning(f"WebP 文件损坏（chunk size 不匹配）: 声明 {declared_size + 8} vs 实际 {len(raw)}")
+                return None  # 拒绝损坏的 WebP
+        except struct.error:
+            logger.warning("WebP 文件头解析失败，拒绝")
+            return None
         return 'image/webp'
     return None
 
 
+
 # ---------- 全局异常处理 ----------
-IS_DEV = os.environ.get("ENV", "production").lower() in ("dev", "development")
+# 注意：Starlette 仅支持 Exception 子类的异常处理器，不能注册 BaseException handler。
+# Python 3.9+ 中 asyncio.CancelledError 已是 Exception 子类，下方统一处理。
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc: HTTPException):
+    """确保 HTTPException 也输出到日志。生产环境不暴露 type 字段。"""
+    logger.warning(f"HTTP {exc.status_code} [{request.method} {request.url.path}]: {exc.detail}")
+    body = {"detail": str(exc.detail)}
+    if IS_DEV:
+        body["type"] = "HTTPException"
+    return JSONResponse(status_code=exc.status_code, content=body)
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """捕获所有未处理异常，输出完整堆栈并返回 JSON 错误"""
+    """捕获所有未处理异常（含 asyncio.CancelledError），输出完整堆栈并返回 JSON 错误。"""
+    if isinstance(exc, asyncio.CancelledError):
+        logger.warning(f"请求被取消 [{request.method} {request.url.path}]")
+        return JSONResponse(status_code=499, content={"detail": "请求已取消"})
     logger.error(f"未捕获异常 [{request.method} {request.url.path}]: {exc}\n{traceback.format_exc()}")
     return JSONResponse(
         status_code=500,
@@ -216,19 +258,12 @@ async def global_exception_handler(request, exc):
     )
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc: HTTPException):
-    """确保 HTTPException 也输出到日志"""
-    logger.warning(f"HTTP {exc.status_code} [{request.method} {request.url.path}]: {exc.detail}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": str(exc.detail), "type": "HTTPException"},
-    )
 
 
 # ---------- 背景移除 ----------
 @app.post("/remove-bg")
 async def remove_background(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
@@ -242,10 +277,7 @@ async def remove_background(
     - 已登录（free）：每日有限配额（5 次），日期变更自动重置
     - 已登录（pro/team）：无限制
     """
-    # --- 1. 配额日重置（已登录免费用户）---
-    if current_user.plan == "free":
-        await check_and_reset_quota(current_user, db)
-    # --- 2. 校验文件类型 ---
+    # --- 1. 校验文件类型 ---
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=415,
@@ -294,8 +326,12 @@ async def remove_background(
             detail=f"图片尺寸过大 (最大 {MAX_IMAGE_DIM}px)，当前: {image.width}x{image.height}",
         )
 
-    # --- 4.2 配额检查 & 原子扣减（防止 TOCTOU 竞态） ---
+    # --- 4.2 配额日重置 + 原子扣减（防止 TOCTOU 竞态）---
+    # T45: 将配额日重置移到文件校验成功之后，避免格式/尺寸错误浪费 DB 查询
+    # P0-5: 配额原子 UPDATE 依赖后续 save_history_entry() 的内部 commit() 持久化。
+    #       若将来重构跳过历史保存，需在流程末尾显式 commit 或 flush。
     if current_user.plan == "free":
+        await check_and_reset_quota(current_user, db)
         # 使用数据库级别原子更新：WHERE quota_used < quota_daily 确保不会超用
         result = await db.execute(
             update(User)
@@ -306,22 +342,22 @@ async def remove_background(
 
         if result.rowcount == 0:
             # 配额已满或超用，保存被阻塞的记录
-            await save_history_entry_blocked(
-                user=current_user,
-                db=db,
-                original_bytes=contents,
-                filename=file.filename or "image.png",
-                width=image.width,
-                height=image.height,
-            )
+            try:
+                await save_history_entry_blocked(
+                    user=current_user,
+                    db=db,
+                    original_bytes=contents,
+                    filename=file.filename or "image.png",
+                    width=image.width,
+                    height=image.height,
+                )
+            except Exception as he:
+                logger.error(f"保存被阻塞历史记录失败: {he}")
             raise HTTPException(
                 status_code=429,
                 detail=f"今日免费配额已用完 ({current_user.quota_used}/{current_user.quota_daily})，请升级至 Pro 版",
             )
         # 配额已原子递增，后续无需再手动 +1
-        quota_deducted = True
-    else:
-        quota_deducted = False
 
     original_size = (image.width, image.height)
     logger.info(f"处理图片: {file.filename} (原图 {original_size[0]}x{original_size[1]}, {len(contents) / 1024:.1f}KB)")
@@ -372,6 +408,7 @@ async def remove_background(
             logger.warning(f"注意：主模型不可用，已降级至 {model_label}")
     except asyncio.TimeoutError:
         logger.error(f"背景移除超时（{AI_TIMEOUT_SECONDS}s）: {file.filename}")
+        await _rollback_quota(current_user)
         raise HTTPException(
             status_code=500,
             detail=(
@@ -382,16 +419,19 @@ async def remove_background(
     except MemoryError:
         logger.error(f"内存不足: {file.filename}")
         await asyncio.to_thread(gc.collect)
+        await _rollback_quota(current_user)
         raise HTTPException(
             status_code=500,
             detail="服务器内存不足，无法处理该图片。建议：上传更小的图片（长边 ≤ 2000px，文件 ≤ 5MB）",
         )
     except RuntimeError as e:
         logger.error(f"背景移除失败 (全部模型均不可用): {e}\n{traceback.format_exc()}")
+        await _rollback_quota(current_user)
         raise HTTPException(status_code=500, detail=f"背景移除处理失败: {e}")
     except Exception as e:
         logger.error(f"背景移除未知错误: {e}\n{traceback.format_exc()}")
         await asyncio.to_thread(gc.collect)
+        await _rollback_quota(current_user)
         raise HTTPException(status_code=500, detail=f"背景移除处理失败: {e}")
 
     # --- 6.5. 还原到原始尺寸 ---
@@ -427,15 +467,8 @@ async def remove_background(
         model_label=model_label,
     )
 
-    # --- 7.6 配额已原子扣减，仅处理历史保存失败的异常情况 ---
-    if current_user.plan == "free" and not quota_deducted:
-        # 兜底：如果上面原子更新未执行（理论上不应发生），手动递增
-        current_user.quota_used += 1
-        await db.flush()
-        logger.info(
-            f"用户配额更新（兜底）: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
-        )
-    elif current_user.plan == "free" and quota_deducted:
+    # --- 7.6 配额已原子扣减（free 用户在上面 UPDATE WHERE 中完成） ---
+    if current_user.plan == "free":
         logger.info(
             f"用户配额更新: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
         )

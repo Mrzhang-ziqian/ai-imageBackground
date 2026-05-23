@@ -118,9 +118,16 @@ export const useDraftsStore = defineStore('drafts', () => {
     }
   }
 
-  /** 更新草稿的结果 Blob（编辑后保存） */
-  async function updateResult(id: string, newResultBlob: Blob): Promise<void> {
+  /** 更新草稿的结果 Blob（编辑后保存），可选更新结果缩略图 */
+  async function updateResult(id: string, newResultBlob: Blob, newThumbUrl?: string): Promise<void> {
     await idbSet(idbResultKey(id), newResultBlob);
+    if (newThumbUrl) {
+      const idx = items.value.findIndex((d) => d.id === id);
+      if (idx !== -1) {
+        items.value[idx] = { ...items.value[idx], resultThumbUrl: newThumbUrl };
+        await saveMeta(items.value);
+      }
+    }
   }
 
   /** 清空所有草稿 */

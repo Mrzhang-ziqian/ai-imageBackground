@@ -1,6 +1,7 @@
 """
 处理历史记录 API — 数据库存储 + 文件系统
 """
+import asyncio
 import base64
 import io
 import os
@@ -46,7 +47,8 @@ def _thumb_bytes(img: Image.Image, fmt: str, max_side: int = THUMB_SIDE) -> byte
         bg.paste(thumb, mask=thumb.split()[-1])
         bg.save(buf, format="JPEG", quality=60)
     else:
-        save_fmt = fmt if fmt in ("JPEG", "PNG") else "JPEG"
+        # P1-11: 支持 WebP 缩略图保留原格式，避免线条图/截图的 JPEG 伪影
+        save_fmt = fmt if fmt in ("JPEG", "PNG", "WEBP") else "JPEG"
         thumb.save(buf, format=save_fmt, quality=60)
     buf.seek(0)
     return buf.getvalue()
@@ -55,6 +57,37 @@ def _thumb_bytes(img: Image.Image, fmt: str, max_side: int = THUMB_SIDE) -> byte
 def _data_url(blob: bytes, mime: str) -> str:
     """将字节编码为 base64 data URL。"""
     return f"data:{mime};base64,{base64.b64encode(blob).decode()}"
+
+
+def _mime_from_path(path: str) -> str:
+    """从文件扩展名推断 MIME 类型。"""
+    ext = os.path.splitext(path)[1].lower()
+    return {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+    }.get(ext, "image/jpeg")
+
+
+async def _read_thumb_async(path: str) -> tuple[str, str]:
+    """P1-4: 异步读取缩略图文件，避免阻塞事件循环。返回 (base64_data_url, mime)。"""
+    try:
+        blob = await asyncio.to_thread(_sync_read_file, path)
+        if blob:
+            return _data_url(blob, _mime_from_path(path)), _mime_from_path(path)
+    except Exception:
+        pass
+    return "", ""
+
+
+def _sync_read_file(path: str) -> bytes | None:
+    """同步读取文件内容（供 asyncio.to_thread 使用）。"""
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except Exception:
+        return None
 
 
 # ──────────────── Routes ────────────────
@@ -75,19 +108,10 @@ async def list_history(
 
     items: list[HistoryItemOut] = []
     for e in entries:
-        # 读取缩略图文件并编码为 base64
-        orig_thumb_b64 = ""
-        result_thumb_b64 = ""
-        try:
-            with open(e.thumb_original, "rb") as f:
-                orig_thumb_b64 = _data_url(f.read(), "image/jpeg")
-        except Exception:
-            pass
-        try:
-            with open(e.thumb_result, "rb") as f:
-                result_thumb_b64 = _data_url(f.read(), "image/png")
-        except Exception:
-            pass
+        # P1-4: 异步读取缩略图文件，不阻塞事件循环
+        # P1-11: MIME 类型从文件扩展名推断，而非硬编码
+        orig_thumb_b64, _ = await _read_thumb_async(e.thumb_original)
+        result_thumb_b64, _ = await _read_thumb_async(e.thumb_result)
 
         items.append(HistoryItemOut(
             id=e.id,
@@ -139,7 +163,10 @@ async def delete_history(
     if not entry or entry.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="记录不存在")
 
-    # 删除磁盘文件
+    # P1-3: 先删 DB 再清理文件（DB 操作可回滚，文件不可回滚）
+    await db.delete(entry)
+    await db.commit()
+
     for path in (entry.thumb_original, entry.thumb_result, entry.result_path):
         try:
             if path and os.path.isfile(path):
@@ -147,8 +174,6 @@ async def delete_history(
         except Exception:
             pass
 
-    await db.delete(entry)
-    await db.commit()
     return {"ok": True}
 
 
@@ -163,6 +188,12 @@ async def clear_history(
     )
     entries = result.scalars().all()
 
+    # P0-4/P1-3: 先删 DB 再清理文件
+    await db.execute(
+        delete(History).where(History.user_id == current_user.id)
+    )
+    await db.commit()
+
     for entry in entries:
         for path in (entry.thumb_original, entry.thumb_result, entry.result_path):
             try:
@@ -171,10 +202,6 @@ async def clear_history(
             except Exception:
                 pass
 
-    await db.execute(
-        delete(History).where(History.user_id == current_user.id)
-    )
-    await db.commit()
     return {"ok": True, "deleted": len(entries)}
 
 
@@ -217,17 +244,23 @@ async def save_history_entry_blocked(
         )).all()
         stale_ids = [r[0] for r in blocked_rows]
         if stale_ids:
+            # P0-4: 先收集路径 → 删 DB → commit → 再清理文件
             stale_entries = (await db.execute(
                 select(History).where(History.id.in_(stale_ids))
             )).scalars().all()
+            stale_paths: list[str] = []
             for se in stale_entries:
                 for p in (se.thumb_original, se.thumb_result, se.result_path):
-                    try:
-                        if p and os.path.isfile(p):
-                            os.remove(p)
-                    except Exception:
-                        pass
+                    if p:
+                        stale_paths.append(p)
             await db.execute(delete(History).where(History.id.in_(stale_ids)))
+            await db.commit()
+            for p in stale_paths:
+                try:
+                    if os.path.isfile(p):
+                        os.remove(p)
+                except Exception:
+                    pass
 
         # 生成原图缩略图
         orig_img = Image.open(io.BytesIO(original_bytes))
@@ -237,7 +270,7 @@ async def save_history_entry_blocked(
         user_dir = os.path.join(HISTORY_DIR, str(user.id))
         os.makedirs(user_dir, exist_ok=True)
 
-        # DB 记录
+        # P0-3 (same pattern): flush to get ID → write files → commit
         entry = History(
             user_id=user.id,
             filename=filename or "image.png",
@@ -251,7 +284,7 @@ async def save_history_entry_blocked(
             result_path="",
         )
         db.add(entry)
-        await db.commit()
+        await db.flush()
         await db.refresh(entry)
 
         # 写入原图缩略图文件
@@ -329,26 +362,33 @@ async def save_history_entry(
             logger.info(f"已清理 blocked 记录 (id={blocked_existing.id})，即将写入新成功记录")
 
         # 清理超过上限的旧记录
+        # T6: limit 从 1000 缩小到 20，避免一次删除过多记录
         count_result = await db.execute(
             select(History.id)
             .where(History.user_id == user.id)
             .order_by(History.created_at.desc())
             .offset(MAX_HISTORY_PER_USER - 1)
-            .limit(1000)
+            .limit(20)
         )
         stale_ids = [row[0] for row in count_result.all()]
         if stale_ids:
+            # P0-4: 先收集路径 → 删 DB → commit → 再清理文件
             stale_entries = (await db.execute(
                 select(History).where(History.id.in_(stale_ids))
             )).scalars().all()
+            stale_paths: list[str] = []
             for se in stale_entries:
                 for p in (se.thumb_original, se.thumb_result, se.result_path):
-                    try:
-                        if p and os.path.isfile(p):
-                            os.remove(p)
-                    except Exception:
-                        pass
+                    if p:
+                        stale_paths.append(p)
             await db.execute(delete(History).where(History.id.in_(stale_ids)))
+            await db.commit()
+            for p in stale_paths:
+                try:
+                    if os.path.isfile(p):
+                        os.remove(p)
+                except Exception:
+                    pass
 
         # 生成缩略图
         orig_img = Image.open(io.BytesIO(original_bytes))
@@ -359,7 +399,8 @@ async def save_history_entry(
         user_dir = os.path.join(HISTORY_DIR, str(user.id))
         os.makedirs(user_dir, exist_ok=True)
 
-        # 创建 DB 记录（先拿到 ID）
+        # P0-3: 先 flush 获取 ID → 写文件 → 最后 commit
+        # 避免 commit 后文件写入失败产生孤儿 DB 记录
         entry = History(
             user_id=user.id,
             filename=filename,
@@ -372,10 +413,10 @@ async def save_history_entry(
             result_path="",
         )
         db.add(entry)
-        await db.commit()
+        await db.flush()  # 获取 ID，不提交事务
         await db.refresh(entry)
 
-        # 写入文件
+        # 写入文件（使用 flush 获取的 ID）
         thumb_orig_path = os.path.join(user_dir, f"{entry.id}_thumb_orig.jpg")
         thumb_result_path = os.path.join(user_dir, f"{entry.id}_thumb_result.png")
         result_path = os.path.join(user_dir, f"{entry.id}_result.png")
@@ -387,7 +428,7 @@ async def save_history_entry(
         with open(result_path, "wb") as f:
             f.write(result_bytes)
 
-        # 更新 DB 文件路径
+        # 更新路径 + 统一提交
         entry.thumb_original = thumb_orig_path
         entry.thumb_result = thumb_result_path
         entry.result_path = result_path
