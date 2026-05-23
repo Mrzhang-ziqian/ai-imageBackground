@@ -1,7 +1,7 @@
 <template>
   <section class="preview-section">
-    <!-- 模式切换 -->
-    <div class="preview-toolbar">
+    <!-- 模式切换（仅在可对比时显示） -->
+    <div v-if="!hideCompare" class="preview-toolbar">
       <div class="mode-tabs">
         <button
           class="mode-tab"
@@ -35,8 +35,41 @@
       </div>
     </div>
 
+    <!-- 无对比：仅显示处理结果 -->
+    <div v-if="hideCompare" class="preview-card">
+      <div class="preview-label">处理结果</div>
+      <div
+        class="preview-box"
+        :style="resultBoxStyle"
+      >
+        <div v-if="imgState.resultLoading" class="shimmer-box" />
+        <img
+          v-if="resultUrl"
+          :src="resultUrl"
+          alt="处理结果"
+          @load="onLoad('result')"
+          @error="onError('result')"
+          :class="{ loaded: !imgState.resultLoading && !imgState.resultError }"
+        />
+        <div v-if="imgState.resultError" class="broken-box">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+          </svg>
+          <span class="broken-text">图片加载失败</span>
+        </div>
+        <ProgressOverlay
+          :visible="processing.status === 'uploading' || processing.status === 'processing'"
+          :progress="processing.progress"
+          :message="processing.message"
+          :detail="processing.detail"
+        />
+      </div>
+    </div>
+
     <!-- 并排模式 -->
-    <div v-if="mode === 'split'" class="preview-grid">
+    <div v-else-if="mode === 'split'" class="preview-grid">
       <div class="preview-card">
         <div class="preview-label">原图</div>
         <div class="preview-box">
@@ -123,6 +156,8 @@ const props = defineProps<{
   processing: ProcessingState;
   resultDimensions?: ImageDimensions | null;
   modelUsed?: string;
+  /** 隐藏并排/对比切换（原图丢失时使用，仅显示处理结果） */
+  hideCompare?: boolean;
 }>();
 
 const mode = ref<'split' | 'compare'>('split');

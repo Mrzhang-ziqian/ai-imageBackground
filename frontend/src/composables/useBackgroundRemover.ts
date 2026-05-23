@@ -3,6 +3,7 @@ import type { ProcessingState, BgColor, FileValidationResult, ImageDimensions, B
 import { ALLOWED_TYPES, MAX_FILE_SIZE, BACKGROUND_TEMPLATES } from '@/types';
 import { uploadAndRemoveBg } from '@/services/api';
 import { renderWithTemplate } from './useTemplateRenderer';
+import { dataUrlToBlob } from './useBatchProcessor';
 
 /**
  * 图片背景移除核心逻辑 —— 组合式函数。
@@ -61,110 +62,42 @@ export function useBackgroundRemover() {
 
   // ---- Process Image ----
 
-  async function processImage(file: File): Promise<string | null> {
-    // 中止旧请求、清理旧资源
+  /** 核心处理逻辑（processImage 和 retryCurrentFile 共用） */
+  async function _doProcess(file: File, keepOriginalUrl: boolean): Promise<string | null> {
     abortCurrent();
-    revokeAllUrls();
+    if (!keepOriginalUrl) {
+      revokeAllUrls();
+    }
 
-    currentFile.value = file;
-    resultBlob.value = null;
-    transparentBlob.value = null;
-    resultUrl.value = '';
-    resultDimensions.value = null;
-    currentBgColor.value = 'transparent';
-    currentTemplateId.value = null;
+    if (!keepOriginalUrl) {
+      currentFile.value = file;
+      originalUrl.value = URL.createObjectURL(file);
+    }
 
-    originalUrl.value = URL.createObjectURL(file);
-
-    processing.status = 'uploading';
-    processing.progress = 0;
-    processing.message = '准备上传...';
-    processing.detail = `${(file.size / 1024).toFixed(0)} KB`;
-
-    abortController = new AbortController();
-
-    try {
-      const result = await uploadAndRemoveBg(
-        file,
-        // 上传进度
-        (pct, loaded, total) => {
-          processing.progress = pct;
-          processing.message = '上传中...';
-          const loadedKb = (loaded / 1024).toFixed(0);
-          const totalKb = (total / 1024).toFixed(0);
-          processing.detail = `${loadedKb} / ${totalKb} KB`;
-        },
-        // 阶段切换
-        (phase) => {
-          if (phase === 'processing') {
-            processing.status = 'processing';
-            processing.message = 'AI 正在移除背景...';
-            processing.progress = 30;
-            const totalKb = file.size / 1024;
-            processing.detail =
-              totalKb < 100
-                ? '约 2-5 秒'
-                : totalKb < 500
-                  ? '约 5-10 秒'
-                  : totalKb < 2000
-                    ? '约 10-20 秒'
-                    : '约 20-60 秒';
-          }
-        },
-        abortController.signal,
-      );
-
-      // API 已返回 → 平滑过渡进度到 100% 再显示结果
-      await animateToFinish();
-
-      processing.status = 'done';
-      processing.progress = 100;
-      processing.message = '处理完成！';
-
-      transparentBlob.value = result.blob;
-      resultBlob.value = result.blob;
-      resultUrl.value = URL.createObjectURL(result.blob);
-      resultFilename.value = result.filename;
-      resultDimensions.value = result.dimensions ?? null;
-      modelUsed.value = result.modelUsed ?? '';
-
-      return null;
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        return null; // 用户主动取消
+    if (!keepOriginalUrl) {
+      resultBlob.value = null;
+      transparentBlob.value = null;
+      resultUrl.value = '';
+      resultDimensions.value = null;
+      currentBgColor.value = 'transparent';
+      currentTemplateId.value = null;
+    } else {
+      // 重试：清理结果但保留 originalUrl
+      if (resultUrl.value && resultUrl.value !== originalUrl.value) {
+        URL.revokeObjectURL(resultUrl.value);
       }
-      const message = err instanceof Error ? err.message : '处理失败';
-      processing.status = 'error';
-      processing.message = '处理失败';
-      processing.detail = message;
-      return message;
+      resultUrl.value = '';
+      resultBlob.value = null;
+      transparentBlob.value = null;
+      resultDimensions.value = null;
+      modelUsed.value = '';
+      currentBgColor.value = 'transparent';
+      currentTemplateId.value = null;
     }
-  }
-
-  /**
-   * 重试当前文件：不清除已上传的 originalUrl，直接用 currentFile 重新处理。
-   * 场景：模型降级/重试后仍失败，用户点击「重试」按钮。
-   */
-  async function retryCurrentFile(): Promise<string | null> {
-    const file = currentFile.value;
-    if (!file) return '没有可重试的文件';
-
-    // 清理上次结果资源但保留 originalUrl
-    abortCurrent();
-    if (resultUrl.value && resultUrl.value !== originalUrl.value) {
-      URL.revokeObjectURL(resultUrl.value);
-    }
-    resultUrl.value = '';
-    resultBlob.value = null;
-    transparentBlob.value = null;
-    resultDimensions.value = null;
-    modelUsed.value = '';
-    currentBgColor.value = 'transparent';
-    currentTemplateId.value = null;
 
     processing.status = 'uploading';
     processing.progress = 0;
-    processing.message = '重新上传中...';
+    processing.message = keepOriginalUrl ? '重新上传中...' : '准备上传...';
     processing.detail = `${(file.size / 1024).toFixed(0)} KB`;
 
     abortController = new AbortController();
@@ -222,6 +155,20 @@ export function useBackgroundRemover() {
       processing.detail = message;
       return message;
     }
+  }
+
+  async function processImage(file: File): Promise<string | null> {
+    return _doProcess(file, false);
+  }
+
+  /**
+   * 重试当前文件：不清除已上传的 originalUrl，直接用 currentFile 重新处理。
+   * 场景：模型降级/重试后仍失败，用户点击「重试」按钮。
+   */
+  async function retryCurrentFile(): Promise<string | null> {
+    const file = currentFile.value;
+    if (!file) return '没有可重试的文件';
+    return _doProcess(file, true);
   }
 
   /**
@@ -411,16 +358,6 @@ export function useBackgroundRemover() {
   }): void {
     abortCurrent();
     revokeAllUrls();
-
-    // 从 data URL 构建 Blob
-    const dataUrlToBlob = (dataUrl: string): Blob => {
-      const [header, b64] = dataUrl.split(',');
-      const mime = header.match(/:(.*?);/)?.[1] ?? 'image/png';
-      const binary = atob(b64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      return new Blob([bytes], { type: mime });
-    };
 
     const resultBlobData = dataUrlToBlob(params.resultDataUrl);
     transparentBlob.value = resultBlobData;

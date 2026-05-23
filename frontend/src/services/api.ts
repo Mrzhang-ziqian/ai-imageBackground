@@ -17,6 +17,8 @@ class AuthApiError extends Error {
   }
 }
 
+export { AuthApiError };
+
 /** 配额耗尽错误（HTTP 429） */
 export class QuotaExhaustedError extends Error {
   constructor(message?: string) {

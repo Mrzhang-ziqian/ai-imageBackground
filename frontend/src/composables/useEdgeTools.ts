@@ -274,7 +274,9 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
       originalPhotoCtx.drawImage(origImg, 0, 0, canvas.width, canvas.height);
     } catch {
       // 原图加载失败，回退：恢复模式退化为撤销笔触
-      console.warn('原图加载失败，"从原图恢复"功能将退化为笔触撤销');
+      if (import.meta.env.DEV) {
+        console.warn('原图加载失败，"从原图恢复"功能将退化为笔触撤销');
+      }
     }
   }
 

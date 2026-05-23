@@ -33,7 +33,7 @@
           <img :src="item.originalUrl" class="file-thumb" alt="" />
           <div class="file-info">
             <span class="file-name">{{ item.file.name }}</span>
-            <span class="file-size">{{ formatSize(item.file.size) }}</span>
+            <span class="file-size">{{ formatFileSize(item.file.size) }}</span>
           </div>
           <button
             class="btn-remove-file"
@@ -188,7 +188,7 @@
             </div>
             <div class="result-info">
               <span class="result-name">{{ item.file.name }}</span>
-              <span class="result-size">{{ formatSize(item.resultBlob.size) }}</span>
+              <span class="result-size">{{ formatFileSize(item.resultBlob.size) }}</span>
             </div>
             <button class="btn-download-single" @click.stop="onDownloadSingle(item)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -225,6 +225,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import type { BatchItem } from '@/types';
+import { formatFileSize } from '@/utils/imageUtils';
 
 const props = defineProps<{
   batch: ReturnType<typeof import('@/composables/useBatchProcessor').useBatchProcessor>;
@@ -268,12 +269,6 @@ function onDownloadSingle(item: BatchItem): void {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   emit('toast', { message: `已下载: ${item.file.name}`, type: 'success' });
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 </script>
 

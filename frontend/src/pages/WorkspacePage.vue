@@ -293,7 +293,7 @@ import { useDraftsStore } from '@/stores/drafts';
 import { historyApi } from '@/services/api';
 import type { HistoryEntry, BgColor } from '@/types';
 import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT } from '@/types';
-import { readImageDimensions, resizeImageClient, formatFileSize } from '@/utils/imageUtils';
+import { readImageDimensions, resizeImageClient, formatFileSize, createThumbnail } from '@/utils/imageUtils';
 import { humanizeError } from '@/utils/errorHumanizer';
 
 // ---- 组合式函数 ----
@@ -484,8 +484,8 @@ async function doProcessFile(file: File): Promise<void> {
     if (!resultBlob) return;
 
     await quota.afterSuccessfulRequest();
-    const thumbUrl = await createBlobThumbnail(resultBlob, 100);
-    const origThumbUrl = await createOriginalThumbnail(file, 100);
+    const thumbUrl = await createThumbnail(resultBlob, 100);
+    const origThumbUrl = await createThumbnail(file, 100);
 
     await drafts.add({
       id: draftId, filename: remover.resultFilename.value,
@@ -516,24 +516,6 @@ function handleCancelProcess(): void {
 let draftIdCounter = 0;
 function generateDraftId(): string { return `draft_${Date.now()}_${++draftIdCounter}`; }
 
-function createBlobThumbnail(blob: Blob, maxDim: number = 100): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image(); const url = URL.createObjectURL(blob);
-    img.onload = () => { URL.revokeObjectURL(url); const canvas = document.createElement('canvas'); const scale = maxDim / Math.max(img.width, img.height); canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale); canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', 0.7)); };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
-    img.src = url;
-  });
-}
-
-function createOriginalThumbnail(file: File, maxDim: number = 100): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image(); const url = URL.createObjectURL(file);
-    img.onload = () => { URL.revokeObjectURL(url); const canvas = document.createElement('canvas'); const scale = maxDim / Math.max(img.width, img.height); canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale); canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', 0.7)); };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(''); };
-    img.src = url;
-  });
-}
-
 async function handleLargeImageResize(): Promise<void> {
   const file = largeImageDialog.value.file; if (!file) return;
   largeImageDialog.value.resizing = true;
@@ -543,9 +525,9 @@ async function handleLargeImageResize(): Promise<void> {
     largeImageDialog.value.visible = false;
     await doProcessFile(resizedFile);
   } catch (err) {
-    ui.showToast({ message: humanizeError(err instanceof Error ? err.message : '图片缩放失败'), type: 'error' });
+    const msg = humanizeError(err instanceof Error ? err.message : '图片缩放失败');
     largeImageDialog.value.visible = false;
-    ui.showToast({ message: humanizeError(err instanceof Error ? err.message : '图片缩放失败，已取消处理'), type: 'error' });
+    ui.showToast({ message: `${msg}，已取消处理`, type: 'error' });
     // 不静默使用原图——尊重用户选择
   } finally { largeImageDialog.value.resizing = false; }
 }
@@ -567,8 +549,8 @@ async function handleBatchViewDetail(itemId: string): Promise<void> {
   const data = batch.getBatchResultData(itemId);
   if (!data) { ui.showToast({ message: '无法加载该结果', type: 'error' }); return; }
   const draftId = generateDraftId();
-  const resultThumbUrl = await createBlobThumbnail(data.resultBlob, 120);
-  const origThumbUrl = await createOriginalThumbnail(data.file, 120);
+  const resultThumbUrl = await createThumbnail(data.resultBlob, 120);
+  const origThumbUrl = await createThumbnail(data.file, 120);
   await drafts.add({
     id: draftId, filename: data.filename, thumbnailUrl: origThumbUrl, resultThumbUrl: resultThumbUrl,
     dimensions: data.dimensions, modelUsed: data.modelUsed, createdAt: Date.now(),
@@ -610,9 +592,9 @@ async function handleRetry(): Promise<void> {
     await quota.afterSuccessfulRequest();
     const draftId = generateDraftId();
     currentDraftId.value = draftId;
-    const thumbUrl = await createBlobThumbnail(resultBlob, 100);
+    const thumbUrl = await createThumbnail(resultBlob, 100);
     const file = remover.currentFile.value;
-    const origThumb = file ? await createOriginalThumbnail(file, 100) : thumbUrl;
+    const origThumb = file ? await createThumbnail(file, 100) : thumbUrl;
     await drafts.add({
       id: draftId, filename: remover.resultFilename.value, thumbnailUrl: origThumb, resultThumbUrl: thumbUrl,
       dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
@@ -636,7 +618,7 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
     ui.showToast({ message: '正在加载历史记录...', type: 'success' });
     const resultBlob = await historyApi.getResult(entry.id);
     if (!resultBlob || resultBlob.size === 0) { ui.showToast({ message: '历史记录文件已丢失，请重新上传', type: 'error' }); return; }
-    const resultThumbUrl = await createBlobThumbnail(resultBlob, 120);
+    const resultThumbUrl = await createThumbnail(resultBlob, 120);
     const draftId = generateDraftId();
     currentDraftId.value = draftId;
     // 将结果 Blob 保存到草稿箱
@@ -644,23 +626,25 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
       id: draftId, filename: entry.filename, thumbnailUrl: entry.originalThumb, resultThumbUrl: resultThumbUrl,
       dimensions: { width: entry.width, height: entry.height }, modelUsed: entry.modelUsed, createdAt: Date.now(),
     }, resultBlob);
-    activeHistoryId.value = entry.id;
+      activeHistoryId.value = entry.id;
 
-    // 历史恢复 → 在结果页展示（使用 restoreFromDraft 加载完整原图）
-    selectedBgColor.value = 'transparent';
-    const resultObjUrl = URL.createObjectURL(resultBlob);
-    remover.restoreFromDraft({
-      resultUrl: resultObjUrl,
-      resultBlob: resultBlob,
-      originalUrl: entry.originalThumb,
-      filename: entry.filename,
-      dimensions: { width: entry.width, height: entry.height },
-      modelUsed: entry.modelUsed,
-    });
-    historyCollapsed.value = true;
-    ui.showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
-  } catch (err) {
-    console.error('History restore error:', err);
+      // 历史恢复 → 在结果页展示（使用 restoreFromDraft 加载完整原图）
+      selectedBgColor.value = 'transparent';
+      const resultObjUrl = URL.createObjectURL(resultBlob);
+      remover.restoreFromDraft({
+        resultUrl: resultObjUrl,
+        resultBlob: resultBlob,
+        originalUrl: entry.originalThumb,
+        filename: entry.filename,
+        dimensions: { width: entry.width, height: entry.height },
+        modelUsed: entry.modelUsed,
+      });
+      historyCollapsed.value = true;
+      ui.showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
+    } catch (err) {
+    if (import.meta.env.DEV) {
+      console.error('History restore error:', err);
+    }
     ui.showToast({ message: humanizeError(err instanceof Error ? err.message : '加载历史记录失败'), type: 'error' });
   }
 }

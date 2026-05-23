@@ -393,7 +393,8 @@ function destroyBrush(): void {
 }
 
 function getCanvasCoords(e: PointerEvent): { x: number; y: number } {
-  const canvas = brushCanvasRef.value!;
+  const canvas = brushCanvasRef.value;
+  if (!canvas) return { x: 0, y: 0 };
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
@@ -406,7 +407,8 @@ function getCanvasCoords(e: PointerEvent): { x: number; y: number } {
 function onPointerDown(e: PointerEvent): void {
   if (!brushEditor.value) return;
   e.preventDefault();
-  const canvas = brushCanvasRef.value!;
+  const canvas = brushCanvasRef.value;
+  if (!canvas) return;
   canvas.setPointerCapture(e.pointerId);
   isDrawing.value = true;
   brushEditor.value.beginStroke();
@@ -415,7 +417,8 @@ function onPointerDown(e: PointerEvent): void {
 }
 
 function onPointerMove(e: PointerEvent): void {
-  const canvas = brushCanvasRef.value!;
+  const canvas = brushCanvasRef.value;
+  if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
   cursorPos.value = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 

@@ -73,14 +73,6 @@ app.include_router(history_router)
 
 # ---------- 常量 ----------
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
-# 文件魔数校验（8 字节读取足够覆盖所有主流格式）
-MAGIC_SIGNATURES = {
-    b'\x89PNG\r\n\x1a\n': 'image/png',
-    b'\xff\xd8\xff': 'image/jpeg',
-}
-# WebP 魔数为 RIFF....WEBP（前 4 + 偏移 8 的 4 字节）
-WEBP_RIFF = b'RIFF'
-WEBP_WEBP = b'WEBP'
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 # FastAPI 请求体大小限制（先于内存读取）
 MAX_BODY_SIZE = 25 * 1024 * 1024  # 25MB
@@ -199,11 +191,11 @@ async def health_check():
 # ---------- 文件魔数校验 ----------
 def _validate_magic_bytes(raw: bytes) -> str | None:
     """校验文件魔数，返回检测到的 MIME 类型；不匹配返回 None。"""
-    if raw[:8] == MAGIC_SIGNATURES.get(b'\x89PNG\r\n\x1a\n', b'\x89PNG\r\n\x1a\n'):
+    if len(raw) >= 8 and raw[:8] == b'\x89PNG\r\n\x1a\n':
         return 'image/png'
-    if raw[:3] == b'\xff\xd8\xff':
+    if len(raw) >= 3 and raw[:3] == b'\xff\xd8\xff':
         return 'image/jpeg'
-    if raw[:4] == WEBP_RIFF and len(raw) >= 12 and raw[8:12] == WEBP_WEBP:
+    if len(raw) >= 12 and raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
         return 'image/webp'
     return None
 
@@ -216,10 +208,11 @@ IS_DEV = os.environ.get("ENV", "production").lower() in ("dev", "development")
 async def global_exception_handler(request, exc):
     """捕获所有未处理异常，输出完整堆栈并返回 JSON 错误"""
     logger.error(f"未捕获异常 [{request.method} {request.url.path}]: {exc}\n{traceback.format_exc()}")
-    detail = f"服务器内部错误: {exc}" if IS_DEV else "服务器内部错误，请稍后重试"
     return JSONResponse(
         status_code=500,
-        content={"detail": detail, "type": type(exc).__name__} if IS_DEV else {"detail": "服务器内部错误，请稍后重试"},
+        content={
+            "detail": f"服务器内部错误: {exc}" if IS_DEV else "服务器内部错误，请稍后重试",
+        },
     )
 
 

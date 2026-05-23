@@ -183,7 +183,7 @@ export async function renderTemplateThumbnail(
       const drawW = Math.round(img.naturalWidth * scale);
       const drawH = Math.round(img.naturalHeight * scale);
       const offsetX = Math.round((thumbSize - drawW) / 2);
-      const offsetY = Math.round((thumbSize - drawW) / 2 + (drawW - drawH) / 2);
+      const offsetY = Math.round((thumbSize - drawH) / 2);
 
       const canvas = document.createElement('canvas');
       canvas.width = thumbSize;

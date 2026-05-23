@@ -4,18 +4,8 @@
  * 存储 token 到 localStorage，提供注册/登录/登出/获取当前用户。
  */
 import { ref, computed } from 'vue'
-import { authApi } from '@/services/api'
+import { authApi, AuthApiError } from '@/services/api'
 import type { UserInfo } from '@/types'
-
-/** 后端鉴权 API 错误（含 HTTP 状态码） */
-class AuthApiError extends Error {
-  status: number
-  constructor(message: string, status: number) {
-    super(message)
-    this.name = 'AuthApiError'
-    this.status = status
-  }
-}
 
 // ---------- State ----------
 const token = ref<string | null>(localStorage.getItem('auth_token'))

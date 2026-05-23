@@ -34,6 +34,7 @@
                   :processing="remover.processing"
                   :result-dimensions="remover.resultDimensions.value"
                   :model-used="remover.modelUsed.value"
+                  :hide-compare="!hasOriginal"
                 />
               </div>
 
@@ -130,6 +131,7 @@ const drafts = useDraftsStore();
 const loading = ref(true);
 const confirming = ref(false);
 const deleting = ref(false);
+const hasOriginal = ref(true);
 
 /** 跟踪本组件创建的 Object URL，组件卸载时统一回收 */
 const trackedUrls: string[] = [];
@@ -179,8 +181,9 @@ onMounted(async () => {
     return;
   }
 
-  // 原图丢失时提示用户（对比功能将失效）
-  if (!originalBlob) {
+  // 原图丢失时提示用户（对比功能将禁用）
+  hasOriginal.value = !!originalBlob;
+  if (!hasOriginal.value) {
     ui.showToast({
       message: '原始图片数据已丢失，对比功能已禁用',
       type: 'warning',
@@ -189,12 +192,12 @@ onMounted(async () => {
 
   // 创建 Object URLs（track 以便卸载时自动回收）
   const resultUrl = trackUrl(URL.createObjectURL(resultBlob));
-  const originalUrl = originalBlob
-    ? trackUrl(URL.createObjectURL(originalBlob))
-    : resultUrl;
+  const originalUrl = hasOriginal.value
+    ? trackUrl(URL.createObjectURL(originalBlob!))
+    : '';
 
   // 恢复状态到 remover
-  remover.restoreFromDraft?.({
+  remover.restoreFromDraft({
     resultUrl,
     resultBlob,
     originalUrl,
@@ -209,7 +212,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   releaseAllUrls();
-  remover.reset?.();
+  remover.reset();
 });
 
 /** 确认完成 → 删除草稿 → 返回工作台（携带 confirmed 参数触发历史刷新） */
