@@ -164,16 +164,17 @@ export function uploadAndRemoveBg(
       }
     });
 
+    // K28: 独立标志位，signal.aborted 可能在 XHR error 回调中尚未更新
+    let isAborted = false;
+
     xhr.addEventListener('error', () => {
-      // K28: 用独立标志位代替 signal?.aborted 避免竞态
-      if (!signal || signal.aborted) return;
+      if (isAborted) return;
       reject(new Error('无法连接到服务器，请检查网络后重试'));
     });
 
     if (signal) {
-      let isAbortedBySignal = false;
       signal.addEventListener('abort', () => {
-        isAbortedBySignal = true;
+        isAborted = true;
         xhr.abort();
         reject(new DOMException('请求已取消', 'AbortError'));
       });

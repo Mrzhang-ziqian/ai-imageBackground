@@ -44,6 +44,8 @@
 🛠 Sprint I          G40 遗留 P1/P2 修复 + G41 审计热修复   13 项优化 ✅
 🛠 Sprint J          G41 应急热修复 + G42 全栈审计修复    11 项优化 + 8 项修复 ✅
 🧪 Sprint K          G43 全代码库（13 文件）审计        已完成（58 项发现）
+🛠 Sprint L          G43 P1+P2 修复 (22项)             全部完成 ✅
+🧪 Sprint M          回归测试 + 审计复查                2 项回归修复 ✅
 ❌ Phase 6 (商业化)  G24~G27 新增            0/5
 ❌ 质感层            G16~G21               0/6
 ```
@@ -1276,6 +1278,31 @@ Sprint L: ████████████ 22/22 G43 P1×7 + P2×15 修复 (
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### 🧪 Sprint M — 回归测试 & 审计复查（2026-05-23）
+
+Sprint L 修复后资深测试工程师进行全量回归审计，发现 2 项回归问题并即时修复：
+
+| # | 问题 | 严重度 | 详情 | 状态 |
+|:---:|------|:---:|------|:---:|
+| **M1** | K28 api.ts abort 竞态修复不完整 | 🔴 P1 | `isAbortedBySignal` 声明在 `if(signal)` 块内，error handler 无法访问；仍用 `signal?.aborted` 检查 | ✅ 已修复 |
+| **M2** | K17 UploadZone 全局 drop 阻止被过度移除 | 🟡 P2 | 仅移除 `dragover` 全局监听即可；完全移除 `drop` 导致拖拽文件到页面任意位置都会触发浏览器打开 | ✅ 已修复（仅保留全局 drop 阻止） |
+
+**审计确认通过的修复：**
+- K1/K2 BatchPanel 响应式重构 ✅ — 模板和脚本的 `retryingIds`/`resultUrls` 访问一致
+- K3 useAuth initialized ✅ — ref 正确声明和 set
+- K4 api.ts DRY ✅ — getMe 正确复用 authFetch
+- K5 XHR token ✅ — uploadAndRemoveBg 参数传递链完整
+- K6 DraftDetail 回滚保护 ✅ — router.replace 在 remove 之前
+- K7 DraftDetail I/O 优化 ✅ — updateResult 已移除
+- K14 useQuota null 处理 ✅ — WorkspacePage quotaText 有 null 检查
+- K18 HistoryPanel shimmer ✅ — blocked 条目 resultLoading: false
+- K19 死 CSS 清理 ✅ — 删除类无模板残留
+- K9/K10/K11 DB 安全 ✅ — PRAGMA 检查 + 路径 + 密码警告正确
+
+**已知低影响问题（暂不修复）：**
+- `useAuth.initialized` 已导出但当前无消费者显式等待 — 低风险，`isLoggedIn` 在 fetchMe 完成后自动正确
+- `DraftDetailPage` confirm 失败后 toast 在已跳转页面显示 — 极低概率（IndexedDB 删除极少失败）
+
 ---
 
 
@@ -1313,5 +1340,5 @@ Sprint L: ████████████ 22/22 G43 P1×7 + P2×15 修复 (
 
 ---
 
-> **当前状态**：Phase 1~4 全部交付。Sprint A~L 共 60 项 UX 优化 + 86 项审计热修复。G41 27 项 ✅。G42 8 项 ✅。G43 P1+P2 22 项 ✅。剩余 K8 (架构) + 30 P3 + Canvas缩放。
+> **当前状态**：Phase 1~4 全部交付。Sprint A~M 共 60 项 UX 优化 + 88 项审计热修复。G41 27 项 ✅。G42 8 项 ✅。G43 P1+P2 22 项 ✅。回归测试 2 项重修复 ✅。剩余 K8 (架构) + 30 P3 + Canvas缩放。
 > **下一步**：K8 (composables → Pinia) → Phase 5 G24 付费墙。

@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import type { FileValidationResult } from '@/types';
 
 const emit = defineEmits<{
@@ -98,5 +98,16 @@ function handleFiles(fileList: FileList | null): void {
   }
 }
 
-// K17: 仅 dropzone 内监听 dragover/drop，移除全局阻止（避免干扰其他组件）
+// K17: 全局阻止 browser 默认 drop 行为（防止拖拽文件时跳转），保留 dragover 给组件内部处理
+function preventGlobalDrop(e: DragEvent): void {
+  e.preventDefault();
+}
+
+onMounted(() => {
+  document.addEventListener('drop', preventGlobalDrop);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('drop', preventGlobalDrop);
+});
 </script>
