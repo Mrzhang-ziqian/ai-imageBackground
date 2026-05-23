@@ -13,10 +13,10 @@
  */
 import { watch, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { useAuth } from '@/composables/useAuth';
+import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
 
-const auth = useAuth();
+const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 const ui = useUiStore();
@@ -32,16 +32,17 @@ function redirectFromHome(): void {
  * 此时 watch(immediate) 不会触发（值已经为 true，无变化事件）
  */
 onMounted(() => {
-  if (auth.isLoggedIn.value && route.path === '/') {
+  if (auth.isLoggedIn && route.path === '/') {
     redirectFromHome();
   }
 });
 
 /**
  * 场景 B：登录成功 / fetchMe 恢复 / 任何 isLoggedIn 从 false → true
+ * 注意：Pinia store 已通过 reactive() 解包 ref，无需 .value
  */
 watch(
-  () => auth.isLoggedIn.value,
+  () => auth.isLoggedIn,
   (loggedIn) => {
     if (loggedIn && route.path === '/') {
       redirectFromHome();
@@ -53,7 +54,7 @@ watch(
  * 场景 C：登出（token 过期 / 手动退出） → 若在需登录页面，跳转首页
  */
 watch(
-  () => auth.isLoggedIn.value,
+  () => auth.isLoggedIn,
   (loggedIn, wasLoggedIn) => {
     if (!loggedIn && wasLoggedIn && route.meta.requiresAuth) {
       router.replace('/');

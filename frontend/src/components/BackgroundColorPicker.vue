@@ -155,9 +155,12 @@ function isPreset(color: BgColor): boolean {
 
 const isCustomActive = computed(() => !isPreset(props.modelValue));
 
+// K38: 兜底颜色使用 CSS 变量引用，保持与主题一致
+const CUSTOM_FALLBACK_HEX = '#6366f1';
+
 const customHex = computed(() => {
   if (!isPreset(props.modelValue)) return props.modelValue;
-  return '#6366f1';
+  return CUSTOM_FALLBACK_HEX;
 });
 
 // ---- 事件处理 ----

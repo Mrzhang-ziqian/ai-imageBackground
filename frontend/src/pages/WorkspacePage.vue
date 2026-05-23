@@ -225,7 +225,7 @@
           </Transition>
 
           <!-- 处理历史（可折叠） -->
-          <div v-if="history.entries.value.length > 0" class="history-wrapper">
+          <div v-if="history.entries.length > 0" class="history-wrapper">
             <button class="history-toggle" @click="historyCollapsed = !historyCollapsed">
               <div class="history-toggle-left">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -233,7 +233,7 @@
                   <polyline points="12 6 12 12 16 14"/>
                 </svg>
                 <span>处理历史</span>
-                <span class="history-count">{{ history.entries.value.length }}</span>
+                <span class="history-count">{{ history.entries.length }}</span>
               </div>
               <span class="history-toggle-arrow" :class="{ collapsed: historyCollapsed }">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -244,7 +244,7 @@
             <Transition name="collapse">
               <div v-show="!historyCollapsed">
                 <HistoryPanel
-                  :entries="history.entries.value"
+                  :entries="history.entries"
                   :active-id="activeHistoryId"
                   @restore="handleHistoryRestore"
                   @remove="history.remove"
@@ -342,8 +342,8 @@ const showProModal = ref(false);
 
 // ---- 配额文案 ----
 const quotaText = computed(() => {
-  if (!auth.isLoggedIn.value) return '';
-  const user = auth.user.value;
+  if (!auth.isLoggedIn) return '';
+  const user = auth.user;
   if (!user || user.plan !== 'free') return '';
   const left = quota.quotaLeft.value;
   if (left === null || left <= 0) return '今日次数已用完';
@@ -362,12 +362,12 @@ const batchChoiceCount = computed(() => batchChoiceFiles.value.length);
 // ---- 首次挂载：引导 + 示例图 + 历史加载 ----
 onMounted(async () => {
   // 新用户引导横幅
-  if (!localStorage.getItem(ONBOARDING_KEY) && auth.isLoggedIn.value) {
+  if (!localStorage.getItem(ONBOARDING_KEY) && auth.isLoggedIn) {
     showOnboarding.value = true;
     localStorage.setItem(ONBOARDING_KEY, '1');
   }
   // 示例图（仅首次登录用户可见，用过一次后永久隐藏）
-  if (!localStorage.getItem(EXAMPLES_KEY) && auth.isLoggedIn.value) {
+  if (!localStorage.getItem(EXAMPLES_KEY) && auth.isLoggedIn) {
     showExamples.value = true;
   }
   // 草稿箱初始化
@@ -377,7 +377,7 @@ onMounted(async () => {
     await history.reload();
     await quota.syncFromServer();
     router.replace({ query: {} });
-  } else if (!history.loaded.value) {
+  } else if (!history.loaded) {
     history.load();
   }
 });
@@ -685,7 +685,7 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
   }
   try {
     ui.showToast({ message: '正在加载历史记录...', type: 'success' });
-    const resultBlob = await historyApi.getResult(entry.id, auth.token.value);
+    const resultBlob = await historyApi.getResult(entry.id, auth.token);
     if (!resultBlob || resultBlob.size === 0) { ui.showToast({ message: '历史记录文件已丢失，请重新上传', type: 'error' }); return; }
     const resultThumbUrl = await createThumbnail(resultBlob, 120);
     const draftId = generateDraftId();
@@ -720,8 +720,8 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
 }
 
 /** blocked 记录重试：引导用户重新上传并从历史中移除该条目 */
-function handleRetryBlocked(entryId: number): void {
-  history.remove(entryId);
+function handleRetryBlocked(entry: HistoryEntry): void {
+  history.remove(entry.id);
   ui.showToast({ message: '请重新上传图片', type: 'success' });
   doReset();
 }

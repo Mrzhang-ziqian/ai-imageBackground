@@ -172,6 +172,8 @@ const showLeaveConfirm = ref(false);
 const trackedUrls: string[] = [];
 
 function trackUrl(url: string): string {
+  // K41: 过滤空字符串和无效 URL
+  if (!url || !url.startsWith('blob:')) return url;
   trackedUrls.push(url);
   return url;
 }

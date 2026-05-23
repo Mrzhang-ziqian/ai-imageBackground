@@ -13,7 +13,7 @@ class UserRegister(BaseModel):
 
 
 class UserLogin(BaseModel):
-    email: str = Field(..., min_length=5, max_length=255)
+    email: str = Field(..., min_length=5, max_length=255, pattern=r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
     password: str = Field(..., min_length=8, max_length=128)
 
 

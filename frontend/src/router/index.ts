@@ -7,7 +7,7 @@
  * /drafts               → 草稿箱列表（需登录）
  */
 import { createRouter, createWebHistory } from 'vue-router';
-import { useAuth } from '@/composables/useAuth';
+import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
 
 const router = createRouter({
@@ -46,9 +46,10 @@ const router = createRouter({
 // 路由守卫：未登录跳回首页
 router.beforeEach((to, _from, next) => {
   if (to.meta.requiresAuth) {
-    const auth = useAuth();
-    if (!auth.isLoggedIn.value) {
-      // 保存目标路径，登录后跳回
+    const auth = useAuthStore();
+    // T1 fix: 直接检查 store state 而非 computed，避免可能的 unwrap 问题
+    const loggedIn = !!auth.token && !!auth.user;
+    if (!loggedIn) {
       const ui = useUiStore();
       ui.setPendingRoute(to.fullPath);
       next('/');

@@ -24,7 +24,7 @@
         </svg>
         <h3>拖拽图片到此处</h3>
         <p>或 <span class="link">点击选择文件</span></p>
-        <p class="hint">支持 PNG、JPEG、WebP 格式，最大 20MB</p>
+        <p class="hint">支持 PNG、JPEG、WebP 格式，最大 {{ maxSizeMB }}MB</p>
         <p v-if="quotaText" class="quota-hint">{{ quotaText }}</p>
       </div>
     </div>
@@ -32,8 +32,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { FileValidationResult } from '@/types';
+import { MAX_FILE_SIZE } from '@/types';
 
 const emit = defineEmits<{
   (e: 'file-selected', file: File): void;
@@ -45,6 +46,9 @@ const props = defineProps<{
   validateFile: (file: File | null) => FileValidationResult;
   quotaText?: string;
 }>();
+
+/** K34: 动态计算最大文件大小，不再硬编码 "20MB" */
+const maxSizeMB = computed(() => Math.round(MAX_FILE_SIZE / (1024 * 1024)));
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isDragOver = ref(false);
@@ -78,17 +82,24 @@ function handleFiles(fileList: FileList | null): void {
 
   // 过滤出有效的图片文件
   const validFiles: File[] = [];
+  let skippedCount = 0;
   for (let i = 0; i < fileList.length; i++) {
     const file = fileList[i];
     const validation = props.validateFile(file);
     if (validation.valid) {
       validFiles.push(file);
     } else {
+      skippedCount++;
       emit('validation-error', `${file.name}: ${validation.error}`);
     }
   }
 
   if (validFiles.length === 0) return;
+
+  // K35: 当部分文件被跳过时，给用户明确反馈
+  if (skippedCount > 0 && validFiles.length > 0) {
+    emit('validation-error', `已添加 ${validFiles.length} 个文件，跳过 ${skippedCount} 个不合规文件`);
+  }
 
   // 单文件 → 走原有单图流程；多文件 → 走批量流程
   if (validFiles.length === 1) {

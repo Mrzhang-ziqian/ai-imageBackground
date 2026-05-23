@@ -134,7 +134,7 @@ export function useBackgroundRemover() {
           }
         },
         abortController.signal,
-        auth.token.value,  // K5: 从 Store 传入 token
+        auth.token,  // K5: 从 Store 传入 token (Pinia 已通过 reactive 解包)
       );
 
       stopProgressSimulation();
@@ -406,7 +406,9 @@ export function useBackgroundRemover() {
   }): void {
     // N11: 校验 dimensions 有效性，防止无效尺寸导致下游异常
     if (!params.dimensions || params.dimensions.width <= 0 || params.dimensions.height <= 0) {
-      console.warn('[restoreFromDraft] 无效的 dimensions，已忽略');
+      if (import.meta.env.DEV) {
+        console.warn('[restoreFromDraft] 无效的 dimensions，已忽略');
+      }
     }
     abortCurrent();
     // 不调用 revokeAllUrls：URLs 由调用方（DraftDetailPage）通过 onUnmounted 管理

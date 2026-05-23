@@ -251,8 +251,8 @@ async function handleSubmit() {
     username.value = ''
     password.value = ''
     showPassword.value = false
-  } catch (e: any) {
-    errorMsg.value = e?.message ?? (isLogin.value ? '登录失败' : '注册失败')
+  } catch (e: unknown) {
+    errorMsg.value = (e instanceof Error ? e.message : null) ?? (isLogin.value ? '登录失败' : '注册失败')
   } finally {
     submitting.value = false
   }

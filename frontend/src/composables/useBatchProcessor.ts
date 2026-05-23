@@ -160,7 +160,7 @@ export function useBatchProcessor() {
           }
         },
         signal,
-        auth.token.value,  // K5: 从 Store 传入 token
+        auth.token,  // K5: 从 Store 传入 token (Pinia 已通过 reactive 解包)
       );
 
       if (signal.aborted) return;

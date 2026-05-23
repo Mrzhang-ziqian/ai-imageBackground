@@ -21,7 +21,7 @@
           active: activeId === entry.id,
           blocked: entry.status === 'blocked',
         }"
-        @click="entry.status === 'blocked' ? $emit('retry-blocked', entry.id) : $emit('restore', entry)"
+        @click="entry.status === 'blocked' ? $emit('retry-blocked', entry) : $emit('restore', entry)"
       >
         <div class="card-thumbs">
           <!-- 原图缩略图 -->
@@ -127,7 +127,7 @@ defineEmits<{
   (e: 'restore', entry: HistoryEntry): void;
   (e: 'remove', id: number): void;
   (e: 'clear'): void;
-  (e: 'retry-blocked', id: number): void;
+  (e: 'retry-blocked', entry: HistoryEntry): void;
 }>();
 
 // ---- 图片加载状态追踪 ----
@@ -180,24 +180,22 @@ function ensureState(id: number): ThumbLoadingState {
 }
 
 function onThumbLoad(id: number, type: 'original' | 'result') {
-  const s = ensureState(id);
-  if (type === 'original') {
-    s.originalLoading = false;
-    s.originalError = false;
-  } else {
-    s.resultLoading = false;
-    s.resultError = false;
-  }
+  _updateThumbState(id, type, { loading: false, error: false });
 }
 
 function onThumbError(id: number, type: 'original' | 'result') {
+  _updateThumbState(id, type, { loading: false, error: true });
+}
+
+/** K37: 提取重复的 thumb 状态更新逻辑 */
+function _updateThumbState(id: number, type: 'original' | 'result', patch: { loading: boolean; error: boolean }) {
   const s = ensureState(id);
   if (type === 'original') {
-    s.originalLoading = false;
-    s.originalError = true;
+    s.originalLoading = patch.loading;
+    s.originalError = patch.error;
   } else {
-    s.resultLoading = false;
-    s.resultError = true;
+    s.resultLoading = patch.loading;
+    s.resultError = patch.error;
   }
 }
 </script>
