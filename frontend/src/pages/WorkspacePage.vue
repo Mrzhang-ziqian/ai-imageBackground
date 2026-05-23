@@ -4,6 +4,58 @@
 
     <main class="main">
       <div class="container">
+        <!-- ========== 新用户引导提示 ========== -->
+        <Transition name="onboarding-fade">
+          <div v-if="showOnboarding" class="onboarding-banner">
+            <div class="onboarding-content">
+              <span class="onboarding-icon">👋</span>
+              <div class="onboarding-text">
+                <strong>欢迎使用 AI 背景移除！</strong>
+                <span>拖拽图片到下方区域，AI 将自动移除背景</span>
+              </div>
+              <button class="onboarding-close" @click="dismissOnboarding" title="知道了">✕</button>
+            </div>
+          </div>
+        </Transition>
+
+        <!-- ========== 批量模式选择对话框 ========== -->
+        <Transition name="modal-fade">
+          <div v-if="batchChoiceVisible" class="batch-choice-overlay" @click.self="handleBatchChoiceCancel">
+            <div class="batch-choice-dialog">
+              <div class="batch-choice-icon">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                  <rect x="4" y="4" width="17" height="17" rx="4" stroke="#6366f1" stroke-width="2"/>
+                  <rect x="27" y="4" width="17" height="17" rx="4" stroke="#6366f1" stroke-width="2"/>
+                  <rect x="4" y="27" width="17" height="17" rx="4" stroke="#d1d5db" stroke-width="2"/>
+                  <rect x="27" y="27" width="17" height="17" rx="4" stroke="#d1d5db" stroke-width="2"/>
+                </svg>
+              </div>
+              <h3 class="batch-choice-title">已选择 {{ batchChoiceCount }} 张图片</h3>
+              <p class="batch-choice-desc">请选择处理方式：</p>
+              <div class="batch-choice-actions">
+                <button class="batch-choice-btn batch-choice-primary" @click="handleBatchChoiceQuick">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                  </svg>
+                  <span class="batch-choice-label">
+                    <strong>批量快速处理</strong>
+                    <small>全部同时处理，完成后一次性下载</small>
+                  </span>
+                </button>
+                <button class="batch-choice-btn batch-choice-secondary" @click="handleBatchChoiceRefine">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  <span class="batch-choice-label">
+                    <strong>逐张精修</strong>
+                    <small>每张可单独设置背景颜色和模板</small>
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+
         <!-- ========== 批量模式 ========== -->
         <template v-if="viewMode === 'batch'">
           <div class="back-row">
@@ -129,7 +181,7 @@
                 </div>
                 <div class="error-content">
                   <h3 class="error-title">处理失败</h3>
-                  <p class="error-detail">{{ remover.processing.detail }}</p>
+                  <p class="error-detail">{{ humanizeError(remover.processing.detail) }}</p>
                 </div>
                 <div class="error-actions">
                   <template v-if="isQuotaError">
@@ -217,7 +269,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import AppHeader from '@/components/AppHeader.vue';
 import AppFooter from '@/components/AppFooter.vue';
@@ -242,6 +294,7 @@ import { historyApi } from '@/services/api';
 import type { HistoryEntry, BgColor } from '@/types';
 import { RECOMMENDED_MAX_DIM, MAX_FILE_SIZE_SOFT } from '@/types';
 import { readImageDimensions, resizeImageClient, formatFileSize } from '@/utils/imageUtils';
+import { humanizeError } from '@/utils/errorHumanizer';
 
 // ---- 组合式函数 ----
 const remover = useBackgroundRemover();
@@ -261,6 +314,26 @@ const historyCollapsed = ref(false);
 const batchProgressVisible = computed(() =>
   batch.isProcessing.value && viewMode.value === 'single',
 );
+
+// ---- 批量模式选择对话框 ----
+const batchChoiceVisible = ref(false);
+const batchChoiceFiles = ref<File[]>([]);
+const batchChoiceCount = computed(() => batchChoiceFiles.value.length);
+
+// ---- 新用户引导 ----
+const ONBOARDING_KEY = 'ai-bg-remover-onboarding-shown';
+const showOnboarding = ref(false);
+
+onMounted(() => {
+  if (!localStorage.getItem(ONBOARDING_KEY) && auth.isLoggedIn.value) {
+    showOnboarding.value = true;
+    localStorage.setItem(ONBOARDING_KEY, '1');
+  }
+});
+
+function dismissOnboarding(): void {
+  showOnboarding.value = false;
+}
 
 // ---- 配额文案 ----
 const quotaText = computed(() => {
@@ -282,6 +355,12 @@ onMounted(() => {
   } else if (!history.loaded.value) {
     history.load();
   }
+});
+
+// ---- 组件卸载时清理资源 ----
+onUnmounted(() => {
+  remover.reset();
+  batch.destroy();
 });
 
 // ---- 批量处理完成 → 自动刷新历史 ----
@@ -322,7 +401,7 @@ let bgColorSyncing = false;
 watch(selectedBgColor, async (newColor) => {
   if (bgColorSyncing) return;
   const err = await remover.applyBackgroundColor(newColor);
-  if (err) ui.showToast({ message: err, type: 'error' });
+  if (err) ui.showToast({ message: humanizeError(err), type: 'error' });
 });
 
 watch(() => remover.currentBgColor.value, (newColor) => {
@@ -364,17 +443,43 @@ async function handleFileSelected(file: File): Promise<void> {
   await doProcessFile(file);
 }
 
+/** 多文件拖入 → 弹出选择对话框（批量 vs 逐张精修） */
 function handleFilesSelected(files: File[]): void {
   if (files.length === 0) return;
-  const added = batch.addFiles(files);
+  batchChoiceFiles.value = files;
+  batchChoiceVisible.value = true;
+}
+
+/** 用户选择「批量快速处理」 */
+function handleBatchChoiceQuick(): void {
+  batchChoiceVisible.value = false;
+  const added = batch.addFiles(batchChoiceFiles.value);
   if (added > 0) { viewMode.value = 'batch'; ui.showToast({ message: `已添加 ${added} 个文件`, type: 'success' }); }
+}
+
+/** 用户选择「逐张精修」：按顺序一张一张处理 */
+async function handleBatchChoiceRefine(): void {
+  batchChoiceVisible.value = false;
+  const files = batchChoiceFiles.value;
+  if (files.length === 0) return;
+  ui.showToast({ message: `开始逐张处理 ${files.length} 张图片`, type: 'success' });
+  for (const file of files) {
+    await doProcessFile(file);
+  }
+  ui.showToast({ message: `${files.length} 张图片处理完成`, type: 'success' });
+}
+
+/** 关闭批量选择对话框 */
+function handleBatchChoiceCancel(): void {
+  batchChoiceVisible.value = false;
+  batchChoiceFiles.value = [];
 }
 
 async function doProcessFile(file: File): Promise<void> {
   selectedBgColor.value = 'transparent';
   currentDraftId.value = null;
   const error = await remover.processImage(file);
-  if (error) { ui.showToast({ message: error, type: 'error' }); return; }
+  if (error) { ui.showToast({ message: humanizeError(error), type: 'error' }); return; }
   if (remover.processing.status === 'done') {
     // 后台保存到草稿箱（不跳转）
     const draftId = generateDraftId();
@@ -442,7 +547,7 @@ async function handleLargeImageResize(): Promise<void> {
     largeImageDialog.value.visible = false;
     await doProcessFile(resizedFile);
   } catch (err) {
-    ui.showToast({ message: err instanceof Error ? err.message : '图片缩放失败', type: 'error' });
+    ui.showToast({ message: humanizeError(err instanceof Error ? err.message : '图片缩放失败'), type: 'error' });
     largeImageDialog.value.visible = false;
     await doProcessFile(file);
   } finally { largeImageDialog.value.resizing = false; }
@@ -502,7 +607,7 @@ function onBatchProgressReturn(): void { viewMode.value = 'batch'; }
 
 async function handleRetry(): Promise<void> {
   const error = await remover.retryCurrentFile();
-  if (error) { ui.showToast({ message: error, type: 'error' }); return; }
+  if (error) { ui.showToast({ message: humanizeError(error), type: 'error' }); return; }
   if (remover.processing.status === 'done') {
     const resultBlob = remover.resultBlob.value; if (!resultBlob) return;
     await quota.afterSuccessfulRequest();
@@ -522,7 +627,7 @@ async function handleRetry(): Promise<void> {
   }
 }
 
-function handleValidationError(error: string): void { ui.showToast({ message: error, type: 'error' }); }
+function handleValidationError(error: string): void { ui.showToast({ message: humanizeError(error), type: 'error' }); }
 
 async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
   if (remover.processing.status !== 'idle') remover.reset();
@@ -559,7 +664,7 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
     ui.showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
   } catch (err) {
     console.error('History restore error:', err);
-    ui.showToast({ message: err instanceof Error ? `加载失败: ${err.message}` : '加载历史记录失败，请检查网络连接后重试', type: 'error' });
+    ui.showToast({ message: humanizeError(err instanceof Error ? err.message : '加载历史记录失败'), type: 'error' });
   }
 }
 
@@ -728,6 +833,88 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
   cursor: pointer; transition: all .2s;
 }
 .btn-back-mode:hover { background: #f9fafb; color: #374151; border-color: #d1d5db; }
+
+/* ---- 新增：新用户引导横幅 ---- */
+.onboarding-banner {
+  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
+  border: 1px solid #d4d4f7;
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+.onboarding-content {
+  display: flex; align-items: center; gap: 10px;
+}
+.onboarding-icon { font-size: 22px; flex-shrink: 0; }
+.onboarding-text {
+  display: flex; flex-direction: column; gap: 2px;
+  flex: 1; min-width: 0;
+}
+.onboarding-text strong { font-size: 13px; color: #4f46e5; }
+.onboarding-text span { font-size: 12px; color: #6b7280; }
+.onboarding-close {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  border: none; border-radius: 50%;
+  background: rgba(99,102,241,.1);
+  color: #6366f1; font-size: 14px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s;
+}
+.onboarding-close:hover { background: rgba(99,102,241,.2); }
+
+.onboarding-fade-enter-active { transition: all .4s ease; }
+.onboarding-fade-leave-active { transition: all .2s ease; }
+.onboarding-fade-enter-from { opacity: 0; transform: translateY(-8px); }
+.onboarding-fade-leave-to { opacity: 0; }
+
+/* ---- 新增：批量模式选择对话框 ---- */
+.batch-choice-overlay {
+  position: fixed; inset: 0; z-index: 1100;
+  background: rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.batch-choice-dialog {
+  background: #fff;
+  border-radius: 20px;
+  padding: 32px 28px;
+  max-width: 440px; width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.15);
+}
+.batch-choice-icon { margin-bottom: 12px; color: #6366f1; }
+.batch-choice-title { font-size: 18px; font-weight: 700; color: #1f2937; margin: 0 0 4px; }
+.batch-choice-desc { font-size: 13px; color: #6b7280; margin: 0 0 20px; }
+.batch-choice-actions { display: flex; flex-direction: column; gap: 10px; }
+.batch-choice-btn {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 16px 18px;
+  border-radius: 14px; cursor: pointer;
+  transition: all .2s; text-align: left;
+}
+.batch-choice-primary {
+  border: 2px solid #6366f1;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+.batch-choice-primary:hover { background: #e0e7ff; border-color: #4f46e5; }
+.batch-choice-secondary {
+  border: 2px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+}
+.batch-choice-secondary:hover { background: #f9fafb; border-color: #d1d5db; }
+.batch-choice-label {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.batch-choice-label strong { font-size: 14px; }
+.batch-choice-label small { font-size: 12px; color: inherit; opacity: .7; }
+
+.modal-fade-enter-active { transition: all .25s ease; }
+.modal-fade-leave-active { transition: all .15s ease; }
+.modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; }
+.modal-fade-enter-from .batch-choice-dialog { transform: scale(.95); }
 
 /* ---- 响应式 ---- */
 @media (max-width: 640px) {
