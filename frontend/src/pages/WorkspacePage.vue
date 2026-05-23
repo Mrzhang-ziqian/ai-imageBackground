@@ -400,7 +400,7 @@ function handleLargeImageCancel(): void {
 //  批量 → 单图桥接（现在跳转到草稿详情页）
 // ================================================================
 
-function handleBatchViewDetail(itemId: string): void {
+async function handleBatchViewDetail(itemId: string): Promise<void> {
   const data = batch.getBatchResultData(itemId);
   if (!data) {
     ui.showToast({ message: '无法加载该结果', type: 'error' });
@@ -409,25 +409,25 @@ function handleBatchViewDetail(itemId: string): void {
 
   // 批量处理结果也保存为草稿
   const draftId = generateDraftId();
-  const reader = new FileReader();
-  reader.onload = async () => {
-    const thumbUrl = reader.result as string;
-    await drafts.add(
-      {
-        id: draftId,
-        filename: data.filename,
-        thumbnailUrl: thumbUrl,
-        resultThumbUrl: thumbUrl,
-        dimensions: data.dimensions,
-        modelUsed: data.modelUsed,
-        createdAt: Date.now(),
-      },
-      data.resultBlob,
-      data.file,
-    );
-    router.push(`/workspace/draft/${draftId}`);
-  };
-  reader.readAsDataURL(data.resultBlob);
+  // 为结果生成真正的缩略图（~3KB），避免巨型 base64
+  const resultThumbUrl = await createBlobThumbnail(data.resultBlob, 120);
+  // 为原图也生成缩略图
+  const origThumbUrl = await createOriginalThumbnail(data.file, 120);
+
+  await drafts.add(
+    {
+      id: draftId,
+      filename: data.filename,
+      thumbnailUrl: origThumbUrl,
+      resultThumbUrl: resultThumbUrl,
+      dimensions: data.dimensions,
+      modelUsed: data.modelUsed,
+      createdAt: Date.now(),
+    },
+    data.resultBlob,
+    data.file,
+  );
+  router.push(`/workspace/draft/${draftId}`);
 }
 
 // ================================================================
@@ -535,12 +535,8 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
       return;
     }
 
-    const resultDataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('读取结果失败'));
-      reader.readAsDataURL(resultBlob);
-    });
+    // 生成真正的小缩略图（~3KB），而非完整 base64（数MB）
+    const resultThumbUrl = await createBlobThumbnail(resultBlob, 120);
 
     // 历史恢复也保存为草稿（方便编辑后再确认）
     const draftId = generateDraftId();
@@ -549,7 +545,7 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
         id: draftId,
         filename: entry.filename,
         thumbnailUrl: entry.originalThumb,
-        resultThumbUrl: resultDataUrl,
+        resultThumbUrl: resultThumbUrl,
         dimensions: { width: entry.width, height: entry.height },
         modelUsed: entry.modelUsed,
         createdAt: Date.now(),

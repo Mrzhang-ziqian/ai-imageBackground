@@ -357,17 +357,9 @@ async def remove_background(
 
     logger.info(f"处理完成: {file.filename} ({final_result.width}x{final_result.height}, {result_size_kb:.1f}KB)")
 
-    # --- 7.5 配额递增（已登录免费用户） ---
-    if current_user.plan == "free":
-        current_user.quota_used += 1
-        await db.commit()
-        logger.info(
-            f"用户配额更新: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
-        )
-
-    # --- 7.6 自动保存处理历史 ---
+    # --- 7.5 自动保存处理历史 ---
     result_bytes = output.getvalue()
-    await save_history_entry(
+    history_id = await save_history_entry(
         user=current_user,
         db=db,
         original_bytes=contents,
@@ -376,6 +368,21 @@ async def remove_background(
         filename=file.filename or "image.png",
         model_label=model_label,
     )
+
+    # --- 7.6 配额递增（仅在历史保存成功后扣减） ---
+    if current_user.plan == "free":
+        if history_id is None:
+            # 历史保存失败，不扣配额 — 用户可重试
+            logger.error(
+                f"历史保存失败，配额未扣减: {current_user.email} "
+                f"(仍为 {current_user.quota_used}/{current_user.quota_daily})"
+            )
+        else:
+            current_user.quota_used += 1
+            await db.commit()
+            logger.info(
+                f"用户配额更新: {current_user.email} ({current_user.quota_used}/{current_user.quota_daily})"
+            )
 
     # 安全文件名：仅保留 ASCII 安全字符（字母数字、中文、下划线、连字符、点）
     original_stem = Path(file.filename or "image").stem

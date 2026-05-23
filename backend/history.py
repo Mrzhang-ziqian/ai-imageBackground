@@ -281,22 +281,25 @@ async def save_history_entry(
 ) -> int | None:
     """保存历史记录：生成缩略图、写文件、建 DB 记录。返回 history ID。"""
     try:
+        from sqlalchemy import update
+        from datetime import datetime, timezone
+
         # 计算原图 SHA-256
         file_hash = hashlib.sha256(original_bytes).hexdigest()
 
-        # 去重检查：同一用户、同一哈希、同一模型
+        # 去重检查：同一用户、同一哈希、同一模型 → 仅匹配成功记录
+        # blocked 记录不参与去重（用户再次上传同一张图时应允许重新处理）
         existing = (await db.execute(
             select(History).where(
                 History.user_id == user.id,
                 History.file_hash == file_hash,
                 History.model_used == model_label,
+                History.status != "blocked",
             )
         )).scalar_one_or_none()
 
         if existing:
-            # 已存在 → 更新时间戳（移到最前）
-            from sqlalchemy import update
-            from datetime import datetime, timezone
+            # 已存在成功记录 → 更新时间戳（移到最前）
             await db.execute(
                 update(History)
                 .where(History.id == existing.id)
@@ -304,6 +307,26 @@ async def save_history_entry(
             )
             await db.commit()
             return existing.id
+
+        # 如果存在同一 hash 的 blocked 记录，删除它（为新成功记录让路）
+        blocked_existing = (await db.execute(
+            select(History).where(
+                History.user_id == user.id,
+                History.file_hash == file_hash,
+                History.status == "blocked",
+            )
+        )).scalar_one_or_none()
+
+        if blocked_existing:
+            for path in (blocked_existing.thumb_original, blocked_existing.thumb_result, blocked_existing.result_path):
+                try:
+                    if path and os.path.isfile(path):
+                        os.remove(path)
+                except Exception:
+                    pass
+            await db.delete(blocked_existing)
+            await db.commit()
+            logger.info(f"已清理 blocked 记录 (id={blocked_existing.id})，即将写入新成功记录")
 
         # 清理超过上限的旧记录
         count_result = await db.execute(
