@@ -409,7 +409,7 @@ const viewState = computed<ViewState>(() => {
   return 'error';
 });
 
-const isQuotaError = computed(() => /已用完/.test(remover.processing.detail));
+const isQuotaError = computed(() => remover.isQuotaExhaustedError(remover.processing.detail));
 
 const resultSizeText = computed(() => {
   const d = remover.resultDimensions.value;
@@ -503,7 +503,7 @@ async function handleBatchChoiceRefine(): void {
       errorCount++;
       ui.showToast({ message: `第 ${idx}/${total} 张处理失败: ${humanizeError(error)}`, type: 'error' });
       // 配额耗尽时中止后续
-      if (remover.processing.status === 'error' && /已用完/.test(remover.processing.detail)) {
+      if (remover.processing.status === 'error' && remover.isQuotaExhaustedError(remover.processing.detail)) {
         ui.showToast({ message: `额度用完，已处理 ${idx}/${total} 张，${errorCount} 张失败`, type: 'error' });
         break;
       }
@@ -512,16 +512,13 @@ async function handleBatchChoiceRefine(): void {
     if (remover.processing.status === 'done') {
       const resultBlob = remover.resultBlob.value;
       if (resultBlob) {
-        await quota.afterSuccessfulRequest();
-        const draftId = generateDraftId();
-        const thumbUrl = await createThumbnail(resultBlob, 100);
-        const origThumbUrl = await createThumbnail(file, 100);
-        await drafts.add({
-          id: draftId, filename: remover.resultFilename.value,
-          thumbnailUrl: origThumbUrl, resultThumbUrl: thumbUrl,
-          dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
-          modelUsed: remover.modelUsed.value, createdAt: Date.now(),
-        }, resultBlob, file);
+        await saveResultToDrafts(resultBlob, file);
+        // J2: 同步前端配额计数器，并在额度耗尽时提前停止
+        await quota.syncFromServer();
+        if (quota.isExhausted.value && idx < total) {
+          ui.showToast({ message: `额度用完，已处理 ${idx}/${total} 张，${errorCount} 张失败`, type: 'error' });
+          break;
+        }
       }
     }
     remover.reset();
@@ -543,22 +540,9 @@ async function doProcessFile(file: File): Promise<void> {
   if (error) { ui.showToast({ message: humanizeError(error), type: 'error' }); return; }
   if (remover.processing.status === 'done') {
     // 后台保存到草稿箱（不跳转）
-    const draftId = generateDraftId();
-    currentDraftId.value = draftId;
     const resultBlob = remover.resultBlob.value;
     if (!resultBlob) return;
-
-    await quota.afterSuccessfulRequest();
-    const thumbUrl = await createThumbnail(resultBlob, 100);
-    const origThumbUrl = await createThumbnail(file, 100);
-
-    await drafts.add({
-      id: draftId, filename: remover.resultFilename.value,
-      thumbnailUrl: origThumbUrl, resultThumbUrl: thumbUrl,
-      dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
-      modelUsed: remover.modelUsed.value, createdAt: Date.now(),
-    }, resultBlob, file);
-
+    currentDraftId.value = await saveResultToDrafts(resultBlob, file);
     // 结果已在工作台展示，不跳转。展开历史面板。
     historyCollapsed.value = false;
     history.reload();
@@ -580,6 +564,21 @@ function handleCancelProcess(): void {
 
 let draftIdCounter = 0;
 function generateDraftId(): string { return `draft_${Date.now()}_${++draftIdCounter}`; }
+
+/** 保存处理结果到草稿箱（J3: 提取自 doProcessFile / handleRetry 的重复逻辑） */
+async function saveResultToDrafts(resultBlob: Blob, file: File): Promise<string> {
+  await quota.afterSuccessfulRequest();
+  const draftId = generateDraftId();
+  const thumbUrl = await createThumbnail(resultBlob, 100);
+  const origThumbUrl = await createThumbnail(file, 100);
+  await drafts.add({
+    id: draftId, filename: remover.resultFilename.value,
+    thumbnailUrl: origThumbUrl, resultThumbUrl: thumbUrl,
+    dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
+    modelUsed: remover.modelUsed.value, createdAt: Date.now(),
+  }, resultBlob, file);
+  return draftId;
+}
 
 async function handleLargeImageResize(): Promise<void> {
   const file = largeImageDialog.value.file; if (!file) return;
@@ -653,18 +652,10 @@ async function handleRetry(): Promise<void> {
   const error = await remover.retryCurrentFile();
   if (error) { ui.showToast({ message: humanizeError(error), type: 'error' }); return; }
   if (remover.processing.status === 'done') {
-    const resultBlob = remover.resultBlob.value; if (!resultBlob) return;
-    await quota.afterSuccessfulRequest();
-    const draftId = generateDraftId();
-    currentDraftId.value = draftId;
-    const thumbUrl = await createThumbnail(resultBlob, 100);
+    const resultBlob = remover.resultBlob.value;
     const file = remover.currentFile.value;
-    const origThumb = file ? await createThumbnail(file, 100) : thumbUrl;
-    await drafts.add({
-      id: draftId, filename: remover.resultFilename.value, thumbnailUrl: origThumb, resultThumbUrl: thumbUrl,
-      dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
-      modelUsed: remover.modelUsed.value, createdAt: Date.now(),
-    }, resultBlob, file ?? undefined);
+    if (!resultBlob || !file) return;
+    currentDraftId.value = await saveResultToDrafts(resultBlob, file);
     historyCollapsed.value = false;
     history.reload();
     ui.showToast({ message: '重试成功！', type: 'success' });
@@ -704,22 +695,22 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
       id: draftId, filename: entry.filename, thumbnailUrl: entry.originalThumb, resultThumbUrl: resultThumbUrl,
       dimensions: { width: entry.width, height: entry.height }, modelUsed: entry.modelUsed, createdAt: Date.now(),
     }, resultBlob);
-      activeHistoryId.value = entry.id;
+    activeHistoryId.value = entry.id;
 
-      // 历史恢复 → 在结果页展示（使用 restoreFromDraft 加载完整原图）
-      selectedBgColor.value = 'transparent';
-      const resultObjUrl = URL.createObjectURL(resultBlob);
-      // 历史记录不存储全尺寸原图，使用结果图作为对比参考（远优于 120px 缩略图）
-      remover.restoreFromDraft({
-        resultUrl: resultObjUrl,
-        resultBlob: resultBlob,
-        originalUrl: resultObjUrl,
-        filename: entry.filename,
-        dimensions: { width: entry.width, height: entry.height },
-        modelUsed: entry.modelUsed,
-      });
-      historyCollapsed.value = true;
-      ui.showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
+    // 历史恢复 → 在结果页展示（使用 restoreFromDraft 加载完整原图）
+    selectedBgColor.value = 'transparent';
+    const resultObjUrl = URL.createObjectURL(resultBlob);
+    // 历史记录不存储全尺寸原图，使用结果图作为对比参考（远优于 120px 缩略图）
+    remover.restoreFromDraft({
+      resultUrl: resultObjUrl,
+      resultBlob: resultBlob,
+      originalUrl: resultObjUrl,
+      filename: entry.filename,
+      dimensions: { width: entry.width, height: entry.height },
+      modelUsed: entry.modelUsed,
+    });
+    historyCollapsed.value = true;
+    ui.showToast({ message: `已恢复: ${entry.filename}`, type: 'success' });
     } catch (err) {
     if (import.meta.env.DEV) {
       console.error('History restore error:', err);

@@ -1,8 +1,8 @@
 # AI Background Remover — 产品需求诊断 & 优化路线图
 
 > 更新时间：2026-05-23  
-> 版本：v4.6  
-> 版本说明：Phase 1~4 核心层全部完成。Sprint A~J 共 37 项 UX 优化 + 56 项审计热修复。G37~G41 全部完成，G42 资深测试审计完成。
+> 版本：v4.7  
+> 版本说明：Phase 1~4 核心层全部完成。Sprint A~J 共 37 项 UX 优化 + 64 项审计热修复。G41~G42 全部完成，G43 全代码库审计完成。G42 8 项已修复。
 
 ---
 
@@ -42,7 +42,8 @@
 🛠 Sprint G          G38/G39 遗留修复 + 审计热修复       10 项优化 ✅
 🛠 Sprint H          G39 遗留 P1/P2 修复 + G40 审计热修复   10 项优化 ✅
 🛠 Sprint I          G40 遗留 P1/P2 修复 + G41 审计热修复   13 项优化 ✅
-🧪 Sprint J          G42 资深测试工程师全栈审计         已完成（8 项发现）
+🛠 Sprint J          G41 应急热修复 + G42 全栈审计修复    11 项优化 + 8 项修复 ✅
+🧪 Sprint K          G43 全代码库（13 文件）审计        已完成（58 项发现）
 ❌ Phase 6 (商业化)  G24~G27 新增            0/5
 ❌ 质感层            G16~G21               0/6
 ```
@@ -1138,7 +1139,7 @@ G42 审计: 8 项 → 0 已修复，8 项记录留后续
 
 ---
 
-### 📊 九轮 Sprint 总览
+### 📊 十轮 Sprint 总览
 
 ```
 Sprint A: ████████████ 4/4  草稿保护/透明底/批量重试/构建
@@ -1150,10 +1151,99 @@ Sprint F: ████████████ 5/5  G37遗留全部修复 + Zoom
 Sprint G: ████████████ 10/10 G38遗留 + G39审计热修复
 Sprint H: ████████████ 10/10 G39遗留P1/P2 + G40审计热修复
 Sprint I: ████████████ 13/13 G40遗留P1/P2 + G41审计热修复
-Sprint J: ████████████ 11/11 G41应急热修复 + G41遗留P0/P1/P2全部修复
+Sprint J: ████████████ 11+8/19 G41应急热修复 + G42全栈审计修复 (8 项全部完成)
 ──────────────────────────────────────
-合计:     60 项UX优化 + 56 项审计热修复 (Sprint I: 13 + Sprint J: 11 + 之前: 32)
-存量:     Canvas缩放 (P2) + Pinch-to-zoom (P3) + 8 项 G42 新发现
+合计:     60 项UX优化 + 64 项审计热修复
+存量:     Canvas缩放 (P2) + Pinch-to-zoom (P3) + 58 项 G43 新发现
+```
+
+---
+
+### 🧪 G43 — Sprint K 全代码库审计（13 文件，G42 修复完成后）
+
+> **审计时间**：2026-05-23  
+> **审计范围**：13 个未覆盖文件（backend: schemas.py / models.py / database.py — frontend: useHistory.ts / useQuota.ts / useAuth.ts / api.ts / UploadZone.vue / HistoryPanel.vue / BatchPanel.vue / BackgroundColorPicker.vue / DraftDetailPage.vue / drafts.ts）  
+> **发现：58 个新问题**（8 P1 + 23 P2 + 27 P3）。无 P0 致命 BUG。
+
+#### 🔴 P1 高优 — 建议下轮 Sprint 优先处理
+
+| # | 问题 | 位置 | 详情 | 建议 |
+|:---:|------|------|------|------|
+| **K1** | **BatchPanel `retryingIds` Set 响应式失效** | `BatchPanel.vue:312-321` | `ref<Set>()` 的 `.add()`/`.delete()` 不触发响应式更新，重试按钮的 disabled 状态不会刷新 | 改用 `ref<Record<string, boolean>>({})` |
+| **K2** | **BatchPanel `resultUrls` Map 响应式失效** | `BatchPanel.vue:281-288` | `ref<Map>()` 的 `.set()` 同样不触发响应式更新，图片 URL 可能不显示 | 改用 `reactive(new Map())` 或普通对象 |
+| **K3** | **useAuth 初始化竞态条件** | `useAuth.ts:83-85` | `fetchMe()` 异步返回前 `isLoggedIn` 为 false，组件挂载后立即检查判断错误 | 增加 `initialized` 状态，组件等待后再判断 |
+| **K4** | **api.ts `getMe` 与 `authFetch` 逻辑重复** | `api.ts:72-92` vs `:30-54` | 两处独立实现相同的 401 token clear + JSON body 解析 + detail 数组处理 | `getMe` 复用 `authFetch` 或提取共享错误处理函数 |
+| **K5** | **XHR 直接读 localStorage，绕过 Store** | `api.ts:197` | `uploadAndRemoveBg` 中的 XHR 从 `localStorage.getItem('auth_token')` 读取 token，Store 与 localStorage 不同步时有风险 | 从 `useAuth()` 获取当前 token |
+| **K6** | **DraftDetailPage handleConfirm 先删草稿再跳转无回滚** | `DraftDetailPage.vue:254-279` | `remove()` 成功后 `router.replace` 若失败，草稿已永久丢失 | 调整顺序：先跳转，目标页清理；或 onError 回滚 |
+| **K7** | **DraftDetailPage handleConfirm 中 updateResult 后立即 remove** | `DraftDetailPage.vue:259-262` | 注释已标记 T15：先写 IndexedDB 再立即删除，纯浪费 I/O | 确认后直接 `drafts.remove()`，跳过 updateResult |
+| **K8** | **`useAuth` / `useQuota` / `useHistory` 模块级单例非 Pinia Store** | 三个 composable | 认证状态无法通过 Vue DevTools 查看，测试不可隔离，token 通过 localStorage 耦合到 api.ts | 迁移到 Pinia Store 或 `createSharedComposable` |
+
+#### 🟡 P2 中优 — 代码质量 & 可靠性
+
+| # | 问题 | 位置 | 建议 |
+|:---:|------|------|------|
+| K9 | 数据库种子密码硬编码为环境变量默认值 | `database.py:25-42` | 生产环境强制要求环境变量设置 |
+| K10 | migration 每次启动执行失败的 ALTER TABLE | `database.py:55-59` | 先 `PRAGMA table_info` 检查列是否存在 |
+| K11 | DATABASE_URL 相对路径依赖 CWD | `database.py:11` | 基于 `__file__` 计算绝对路径 |
+| K12 | `useHistory.remove` / `clearAll` 静默吞错误 | `useHistory.ts:44-61` | 乐观更新应在 API 成功后执行，失败时恢复并提示 |
+| K13 | `useHistory.reload` 与 `load` 功能重复 | `useHistory.ts:39-41` | 删除 `reload`，统一使用 `load` |
+| K14 | `useQuota` 加载期间显示错误默认值 5 | `useQuota.ts:23-30` | fallback 返回 `null` 让 UI 显示加载态 |
+| K15 | `useQuota.afterSuccessfulRequest` 失败无反馈 | `useQuota.ts:41-43` | 返回 boolean 表示成功/失败 |
+| K16 | `useAuth.fetchMe` 非 401/403 错误静默 | `useAuth.ts:28-42` | 设置 error 状态让 UI 可重试 |
+| K17 | `UploadZone` 全局 dragover 阻止默认行为 | `UploadZone.vue:106-109` | 仅 dropzone 内监听 |
+| K18 | `HistoryPanel` blocked 条目的 shimmer 永不止 | `HistoryPanel.vue:167-172` | blocked 状态直接设 `resultLoading: false` |
+| K19 | `BackgroundColorPicker` 死 CSS 样式残留 | `BackgroundColorPicker.vue:338-361` | 删除无对应模板元素的规则 |
+| K20 | `drafts.clearAll` 扫描整个 IndexedDB | `drafts.ts:134-148` | 使用独立 DB 或 Object Store |
+| K21 | `drafts.add/remove` loading 闪烁 | `drafts.ts:74-101` | 快速操作不设 loading |
+| K22 | `drafts.updateResult` 不更新 dimensions | `drafts.ts:122-131` | 添加可选 `dimensions` 参数 |
+| K23 | `DraftDetailPage.showDeleteConfirm` 无自动重置 | `DraftDetailPage.vue:282-303` | 5 秒后自动重置 |
+| K24 | `DraftDetailPage` + `WorkspacePage` 重复 `drafts.init()` | 两个 onMounted | Store 加 `initialized` 标志 |
+| K25 | `useAuth` vs `useQuota` 配额逻辑重复 | 两个 composable | 统一到 `useQuota` |
+| K26 | 登录接口密码 `min_length=1` 与注册不一致 | `schemas.py:17` | 改为 `min_length=8` |
+| K27 | 历史列表响应包含 base64 缩略图，无分页 | `useHistory.ts` + `schemas.py` | 后端支持分页，前端滚动加载 |
+| K28 | XHR `error` 事件中 abort 标志竞态 | `api.ts:178-182` | 用独立标志位代替 `signal?.aborted` |
+| K29 | `onDownloadSingle` 每次点击创建新 ObjectURL | `BatchPanel.vue:299-310` | 复用 getResultUrl 缓存 |
+| K30 | POST 请求使用 `Date.now()` cache-busting | `api.ts:192` | 移除多余参数 |
+| K31 | `MAX_HISTORY` 导入未使用 | `useHistory.ts:3` | 删除未使用导入 |
+
+#### 🟢 P3 低优 — 精选
+
+| # | 问题 | 位置 | 建议 |
+|:---:|------|------|------|
+| K32 | `register` 参数顺序不直观 | `useAuth.ts:60` | 改为 `register(username, email, password)` |
+| K33 | `login` / `register` 结构重复 | `useAuth.ts:44-74` | 提取 `authAction` 公共函数 |
+| K34 | 上传提示硬编码 20MB | `UploadZone.vue:27` | 通过 prop 动态渲染 |
+| K35 | `handleFiles` 无文件汇总反馈 | `UploadZone.vue:76-99` | 添加"X 个已添加，Y 个被跳过" |
+| K36 | blocked retry emit 只传 ID | `HistoryPanel.vue:24` | 统一传递完整 entry |
+| K37 | `onThumbLoad/Error` 重复代码 | `HistoryPanel.vue:174-193` | 合并为 `setThumbState` |
+| K38 | `customHex` 硬编码兜底颜色 `#6366f1` | `BackgroundColorPicker.vue:158` | 从 CSS 变量读取 |
+| K39 | `Draft` 接口命名与 `HistoryEntry` 不一致 | `drafts.ts` vs types | 统一 `Url` 后缀 |
+| K40 | `handleEdgeReset` 不重置 hasUnsavedEdits | `DraftDetailPage.vue:349` | 追踪各类编辑独立标志 |
+| K41 | `trackedUrls` 含空字符串 | `DraftDetailPage.vue:172` | 过滤空 URL |
+| K42 | 登录接口未校验邮箱格式 | `schemas.py:16` | 添加 email pattern |
+| K43 | `HistoryItemOut.status` 默认值掩盖 None | `schemas.py:51` | 改为必填 Field |
+| K44 | `model_used` 默认空串而非 NULL | `models.py:53` | 统一为 nullable |
+| K45 | `result_path` blocked 记录需填无用路径 | `models.py:64` | 设为 nullable |
+| K46 | `file_hash` 长度 64 仅适合 hex | `models.py:52` | 接受当前设计 |
+| K47 | Props 类型依赖动态 import | `BatchPanel.vue:264` | 导出返回类型接口 |
+| K48 | `historyApi.list()` 未处理 204 | `api.ts:240` | 先检查 204 返回 [] |
+| K49 | `fetchMe` 中 401 clear token 触发竞态 | `authFetch` 内 (api.ts:44-48) | 已知悉：低概率 |
+| K50 | IndexedDB 无 QuotaExceededError 兜底 | `drafts.ts` | catch 并提示清理 |
+| K51 | `loadMeta` 旧数据迁移无错误恢复 | `drafts.ts:30-47` | 可接受低概率场景 |
+
+### 📊 G43 审计结论
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Sprint K (G43) 全代码库审计结果                             │
+│                                                             │
+│  审计范围:  13 个文件（后端 3 + 前端 10）                     │
+│  发现问题:  58 项（8 P1 + 23 P2 + 27 P3）                   │
+│  致命 BUG:  0 项                                            │
+│  高优问题:  8 项 — 响应式BUG×2 + 竞态 + 重复代码 + 回滚缺失     │
+│  建议优先级: K1=K2 > K3 > K6 > K7 > K4 > K5 > K8            │
+│  预估工作量: ~5 天                                          │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -1193,5 +1283,5 @@ Sprint J: ████████████ 11/11 G41应急热修复 + G41遗
 
 ---
 
-> **当前状态**：Phase 1~4 全部交付。Sprint A~J 共 60 项 UX 优化 + 56 项审计热修复。G41 27 项全部修复 ✅。G42 资深测试工程师全栈审计完成，发现 8 项（3 P1 + 4 P2 + 1 P3），均记录留后续。
-> **下一步**：J1（配额检测去中文硬编码）→ J2（精修配额同步）→ J3（提取草稿保存函数）→ Phase 5 G24 付费墙。
+> **当前状态**：Phase 1~4 全部交付。Sprint A~J 共 60 项 UX 优化 + 64 项审计热修复。G41 27 项全部修复 ✅。G42 8 项全部修复 ✅。G43 全代码库审计完成，发现 58 项（8 P1 + 23 P2 + 27 P3），均记录留后续。
+> **下一步**：K1/K2（BatchPanel 响应式修复）→ K3（useAuth 竞态）→ K4（api.ts DRY）→ Phase 5 G24 付费墙。

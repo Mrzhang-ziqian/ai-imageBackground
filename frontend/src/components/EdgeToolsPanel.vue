@@ -272,6 +272,8 @@ const canvasReady = ref(false);
 const isDrawing = ref(false);
 const cursorPos = ref({ x: -100, y: -100 });
 const showOriginalOverlay = ref(false);
+/** J7: 防止 handleApplyBrush 自身触发的 blob 更新重复初始化画笔 */
+let skipNextBlobWatch = false;
 
 // Tab 配置
 const tabs = [
@@ -328,6 +330,11 @@ watch(activeTab, async (tab) => {
 
 // 监听透明 Blob 变化时重新初始化笔刷
 watch(() => props.transparentBlob, async (blob) => {
+  // J7: 跳过由 handleApplyBrush 自身触发的 blob 更新，避免视觉闪烁
+  if (skipNextBlobWatch) {
+    skipNextBlobWatch = false;
+    return;
+  }
   if (blob && activeTab.value === 'brush' && expanded.value) {
     await initBrush();
   }
@@ -449,10 +456,10 @@ async function handleApplyBrush(): Promise<void> {
   isProcessing.value = true;
   try {
     const blob = await brushEditor.value.getBlob();
+    skipNextBlobWatch = true; // J7: 防止自身触发 watch 重新初始化画笔
     emit('update:resultBlob', blob);
     hasEdgeEdit.value = true;
     emit('toast', { message: '手动修复已应用', type: 'success' });
-    // 编辑后重新初始化笔刷（因为 transparentBlob 会更新触发 watch）
   } catch {
     emit('toast', { message: '笔刷导出失败', type: 'error' });
   } finally {

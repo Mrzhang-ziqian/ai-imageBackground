@@ -121,6 +121,7 @@ const converting = ref(false);
 const copied = ref(false);
 const downloadDone = ref(false);
 const downloadDoneTimer = ref<ReturnType<typeof setTimeout> | null>(null);
+const copiedTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const dropdownRef = ref<HTMLElement | null>(null);
 
 // 是否有透明底可用
@@ -152,6 +153,10 @@ onUnmounted(() => {
   if (downloadDoneTimer.value !== null) {
     clearTimeout(downloadDoneTimer.value);
     downloadDoneTimer.value = null;
+  }
+  if (copiedTimer.value !== null) {
+    clearTimeout(copiedTimer.value);
+    copiedTimer.value = null;
   }
 });
 
@@ -265,8 +270,10 @@ async function onCopy() {
     copied.value = true;
     open.value = false;
     emit('toast', { message: '已复制到剪贴板', type: 'success' });
-    setTimeout(() => {
+    if (copiedTimer.value !== null) clearTimeout(copiedTimer.value);
+    copiedTimer.value = setTimeout(() => {
       copied.value = false;
+      copiedTimer.value = null;
     }, 2000);
   } catch {
     emit('toast', {

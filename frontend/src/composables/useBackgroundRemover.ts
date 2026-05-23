@@ -65,19 +65,23 @@ export function useBackgroundRemover() {
 
   // ---- Process Image ----
 
+  /** 根据文件大小 (KB) 估算处理时长（毫秒） */
+  function _estimateDuration(totalKb: number): number {
+    if (totalKb < 100) return 4000;
+    if (totalKb < 500) return 9000;
+    if (totalKb < 2000) return 18000;
+    if (totalKb < 5000) return 35000;
+    return 55000;
+  }
+
   /** 核心处理逻辑（processImage 和 retryCurrentFile 共用） */
   async function _doProcess(file: File, keepOriginalUrl: boolean): Promise<string | null> {
     abortCurrent();
+
     if (!keepOriginalUrl) {
       revokeAllUrls();
-    }
-
-    if (!keepOriginalUrl) {
       currentFile.value = file;
       originalUrl.value = URL.createObjectURL(file);
-    }
-
-    if (!keepOriginalUrl) {
       resultBlob.value = null;
       transparentBlob.value = null;
       resultUrl.value = '';
@@ -105,13 +109,7 @@ export function useBackgroundRemover() {
 
     abortController = new AbortController();
 
-    // 根据文件大小估算处理时长（毫秒）
-    const totalKb = file.size / 1024;
-    const estDurationMs =
-      totalKb < 100 ? 4000 :
-      totalKb < 500 ? 9000 :
-      totalKb < 2000 ? 18000 :
-      totalKb < 5000 ? 35000 : 55000;
+    const estDurationMs = _estimateDuration(file.size / 1024);
 
     try {
       const result = await uploadAndRemoveBg(
@@ -208,14 +206,7 @@ export function useBackgroundRemover() {
 
   /** 更新预计剩余时间 */
   function updateEta(elapsedMs?: number, ratio?: number): void {
-    const estTotal = (() => {
-      const totalKb = (currentFile.value?.size ?? 0) / 1024;
-      if (totalKb < 100) return 4000;
-      if (totalKb < 500) return 9000;
-      if (totalKb < 2000) return 18000;
-      if (totalKb < 5000) return 35000;
-      return 55000;
-    })();
+    const estTotal = _estimateDuration((currentFile.value?.size ?? 0) / 1024);
 
     const effectiveElapsed = elapsedMs ?? 0;
     const effectiveRatio = ratio ?? 0;
@@ -480,6 +471,12 @@ export function useBackgroundRemover() {
     });
   }
 
+  // ---- Quota Error Detection (J1) ----
+  // 不使用中文字符串 hardcode；支持多种语言的配额耗尽提示
+  function isQuotaExhaustedError(detail: string): boolean {
+    return /已用完|额度.*用完|exhausted|quota.*exceeded|limit.*reached|429/i.test(detail);
+  }
+
   // ---- Return ----
 
   return {
@@ -507,5 +504,6 @@ export function useBackgroundRemover() {
     applyTemplate,
     updateTransparentBlob,
     resetEdgeEdits,
+    isQuotaExhaustedError,
   };
 }
