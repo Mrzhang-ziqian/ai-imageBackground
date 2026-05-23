@@ -2,17 +2,30 @@
   <section class="download-section">
     <div class="download-panel">
       <!-- 主下载按钮：默认下载透明底 PNG -->
-      <button class="btn-download-primary" @click="onDownloadTransparentPng" :disabled="!canDownloadTransparent">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        <span class="download-label">
-          <template v-if="hasTransparent">下载透明底 PNG</template>
-          <template v-else>下载 PNG</template>
-        </span>
-        <span v-if="sizes.transparent" class="file-size">{{ sizes.transparent }}</span>
+      <button
+        class="btn-download-primary"
+        :class="{ 'download-done': downloadDone }"
+        @click="onDownloadTransparentPng"
+        :disabled="!canDownloadTransparent"
+      >
+        <template v-if="downloadDone">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          已下载
+        </template>
+        <template v-else>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span class="download-label">
+            <template v-if="hasTransparent">下载透明底 PNG</template>
+            <template v-else>下载 PNG</template>
+          </span>
+          <span v-if="sizes.transparent" class="file-size">{{ sizes.transparent }}</span>
+        </template>
       </button>
 
       <!-- 更多选项下拉 -->
@@ -106,6 +119,7 @@ const emit = defineEmits<{
 const open = ref(false);
 const converting = ref(false);
 const copied = ref(false);
+const downloadDone = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
 
 // 是否有透明底可用
@@ -186,6 +200,12 @@ function triggerDownload(blob: Blob, name: string) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+
+  // 下载成功动画
+  downloadDone.value = true;
+  setTimeout(() => {
+    downloadDone.value = false;
+  }, 1500);
 }
 
 // ---- 透明底 PNG 下载（主按钮）----
@@ -291,6 +311,23 @@ async function onCopy() {
 
 .btn-download-primary:active {
   transform: translateY(0);
+}
+
+.btn-download-primary.download-done {
+  background: #10b981;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+  pointer-events: none;
+}
+
+.btn-download-primary.download-done svg {
+  width: 20px;
+  height: 20px;
+  animation: check-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes check-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .btn-download-primary svg {

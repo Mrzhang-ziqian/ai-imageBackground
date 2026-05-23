@@ -1,8 +1,8 @@
 # AI Background Remover — 产品需求诊断 & 优化路线图
 
 > 更新时间：2026-05-23  
-> 版本：v3.3  
-> 版本说明：Phase 1~4 核心层全部完成。Phase 5 G23 用户体系已上线。G28 页面体验重构 + G29/G30 全链路缺陷修复（40/48 项已完成）。**G31 新增产品经理 + 设计工程深度体验分析（20 项 UX 缺陷 + 10 项设计方案 + 6 Sprint 路线图）。**
+> 版本：v3.5  
+> 版本说明：Phase 1~4 核心层全部完成。Phase 5 G23 用户体系已上线。G28 页面体验重构完成。G29/G30 全链路缺陷修复（40/48 项已完成）。G31 产品设计分析（20 项 UX 缺陷）。**G32 Sprint A + G33 Sprint B 共 9 项用户体验核心优化已全部实施。**
 
 ---
 
@@ -34,6 +34,7 @@
 ✅ 新增              G29～G30 全链路缺陷修复    40/48 已修复
 📋 新增              G31 产品设计分析          20 项 UX 缺陷 + 10 项设计方案 + 6 Sprint 路线图
 🛠 Sprint A          G32 UX-3/4/5 修复 + T5     4 项已实施 ✅
+🛠 Sprint B          G33 UX-1/2/9/19/20           5 项已实施 ✅
 ❌ Phase 6 (商业化)  G24~G27 新增            0/5
 ❌ 质感层            G16~G21               0/6
 ```
@@ -344,8 +345,8 @@
 
 | # | 痛点 | 当前表现 | 用户心智 | 竞品对标 |
 |:---:|------|------|------|------|
-| **UX-1** | **处理等待焦虑 — 进度跳跃无意义** | 进度 0%→30%→100%，中间 30% 到 100% 直接跳，用户等待期无任何进度反馈 | "是不是卡住了？我还要等多久？" | remove.bg 有模糊预览逐步变清晰的过程，给用户"正在变好"的感知 |
-| **UX-2** | **批量下载被浏览器杀死** | `downloadAll` 用 `setTimeout 300ms` 间隔下载，用户切标签页后浏览器拦截，10 张只下了 2 张 | "我点了全部下载，为什么只有 2 张？" | Canva 提供 ZIP 打包下载 + 进度通知 |
+| **UX-1** | **处理等待焦虑 — 进度跳跃无意义** | 进度 0%→30%→100%，中间 30% 到 100% 直接跳，用户等待期无任何进度反馈 — ✅ 已修复 | "是不是卡住了？我还要等多久？" | remove.bg 有模糊预览逐步变清晰的过程，给用户"正在变好"的感知 |
+| **UX-2** | **批量下载被浏览器杀死** | `downloadAll` 用 `setTimeout 300ms` 间隔下载，用户切标签页后浏览器拦截，10 张只下了 2 张 — ✅ 已修复 (ZIP) | "我点了全部下载，为什么只有 2 张？" | Canva 提供 ZIP 打包下载 + 进度通知 |
 | **UX-3** | **草稿精修离开无保存** | DraftDetailPage 边缘编辑后点"返回"直接丢失所有编辑 | "我花了 10 分钟修边缘，全没了？" | Figma/Canva 离开编辑页必有"是否保存"对话框 |
 | **UX-4** | **无透明底 PNG 独立下载** | DownloadPanel 主按钮下载的是当前显示（含背景色），用户想下透明底需切换到"透明"色再下载 | "我要透明的，为什么下来是蓝底的？" | remove.bg 默认下载透明底 |
 | **UX-5** | **处理失败无恢复路径** | BatchPanel 失败项没有"重试"按钮，用户只能重新上传 | "10 张图 3 张失败，怎么办？" | 任何成熟产品都有单项目重试 |
@@ -357,7 +358,7 @@
 | **UX-6** | **精修无缩放** | PreviewGrid 和画笔 Canvas 无法放大，处理发丝细节时用户只能"盲修" | 双击放大 / 滚轮缩放 / 缩略图导航窗 |
 | **UX-7** | **边缘工具可见性差** | EdgeToolsPanel 默认折叠，只有少部分探索型用户会点开 | 处理完成后自动展开一次，显示徽章"可优化边缘" |
 | **UX-8** | **下载后无分享/传播出口** | 下载即结束，无"分享对比图"、无社交传播 | Before/After GIF 生成 + "分享到社交媒体"按钮 |
-| **UX-9** | **批量逐张精修无进度** | `handleBatchChoiceRefine` 循环处理无提示"第 X/N 张"，用户不确定处理进度 | 顶部浮窗 "正在精修第 3/10 张" |
+| **UX-9** | **批量逐张精修无进度** | `handleBatchChoiceRefine` 循环处理无提示"第 X/N 张"，用户不确定处理进度 — ✅ 已修复 | 顶部浮窗 "正在精修第 3/10 张" |
 | **UX-10** | **历史恢复原图为缩略图** | WorkspacePage 从历史恢复后，PreviewGrid 原图是 100px 缩略图，对比功能实质失效 | 历史中保存全尺寸原图 Blob（或至少更大的缩略图） |
 | **UX-11** | **新用户首次使用空白焦虑** | 注册后面对空白上传区，无示例、无引导 | "试试这张示例图" 云朵/人物/商品 3 张示例 + 3 步功能导览 |
 | **UX-12** | **确认完成后果不明** | DraftDetailPage "确认完成" 后页面跳转，用户不知道草稿去哪里了 | 按钮旁增加明确文字 "确认后将保存到历史并从本页移除" |
@@ -372,8 +373,8 @@
 | **UX-16** | WebP 文件大小估算不准确 | 显示 `≈12 KB` 但实际 `18 KB`，用户感觉被欺骗 |
 | **UX-17** | 配额耗尽卡片无 CTA | 仅显示"很快将推出付费方案"，无邮件订阅、无预告 |
 | **UX-18** | 处理完成后无音效/haptic 反馈 | 用户可能在另一个标签页，处理完了也不知道 |
-| **UX-19** | 背景色/模板切换无过渡动画 | 切换瞬间闪变，视觉粗糙 |
-| **UX-20** | 下载按钮无反馈动画 | 点击后只有浏览器原生下载弹窗，按钮无成功状态 |
+| **UX-19** | 背景色/模板切换无过渡动画 | 切换瞬间闪变，视觉粗糙 — ✅ 已修复 |
+| **UX-20** | 下载按钮无反馈动画 | 点击后只有浏览器原生下载弹窗，按钮无成功状态 — ✅ 已修复 |
 
 ---
 
@@ -623,6 +624,50 @@ useBatchProcessor.ts, package.json — 净增 ~284 行
 
 ---
 
+## 🛠 G33 — Sprint B 实施 & 测试报告（2026-05-23）
+
+> **Sprint B 体验修复**：5 项优化（UX-1 处理等待重构 + UX-2 ZIP 下载 + UX-9 精修进度 + UX-19 背景过渡 + UX-20 下载反馈）。
+
+### 已实施修复
+
+| # | 任务 | 变更范围 | 详情 |
+|:---:|------|------|------|
+| **UX-1** | **处理等待重构（进度模拟 + ETA）** | `useBackgroundRemover.ts` (+68行) | 上传完成后启动 `startProgressSimulation`（每 200ms 从 30% 模拟增长到 88%，缓入曲线）→ `updateEta` 动态显示预计剩余时间 → API 返回后 `stopProgressSimulation` + `animateToFinish` 平滑到 100% |
+| **UX-2** | **批量 ZIP 下载** | `useBatchProcessor.ts` + `BatchPanel.vue` (+70行) | 安装 `jszip` → `downloadAsZip()` 方法（含重名处理）→ BatchPanel 主按钮改为 ZIP 下载 → 打包中 loading 动画 |
+| **UX-9** | **逐张精修进度提示** | `WorkspacePage.vue` (+2行) | `handleBatchChoiceRefine` 循环中添加 `第 idx/files.length 张` toast |
+| **UX-19** | **背景色切换过渡动画** | `PreviewGrid.vue` (+1行) | `.preview-box` 添加 `transition: background-color 0.35s ease` |
+| **UX-20** | **下载按钮成功反馈** | `DownloadPanel.vue` (+30行) | `triggerDownload` 后设置 `downloadDone=true`→ 按钮切换为绿色「已下载 ✓」→ 1.5s 自动恢复 |
+
+### 测试工程师审查
+
+| # | 级别 | 问题 | 位置 | 详情 | 处理 |
+|:---:|:---:|------|------|------|:--:|
+| Q1 | 🟡 | **`updateEta` 重复计算 estTotal** | `useBackgroundRemover.ts` | `startProgressSimulation` 传入 estDurationMs，但 `updateEta` 独立从 `currentFile.value.size` 重新计算 | ⚠️ 保留：两者算法一致，功能等价 |
+| Q2 | 🟡 | **批处理单项目无进度模拟** | `useBatchProcessor.ts:processOneItem` | 批量项目 AI 处理阶段仍从 30% 跳到 100%，无 ETA | ⚠️ 留待后续：需给每个 item 独立 timer，复杂度较高 |
+| Q3 | 🟢 | **ETA 初始显示"预计 X 秒"→ 1s 后"预计还需 X 秒"** | `useBackgroundRemover.ts` | 初始调用无 elapsed/ratio 参数，1s 后才进入动态修正 | ✅ 设计正确 |
+| Q4 | 🟢 | **API 快速返回时模拟跳过** | `useBackgroundRemover.ts` | API <200ms 返回时 interval 触发 0 次 → 直接 animateToFinish | ✅ 平滑过渡正常 |
+| Q5 | 🟢 | **ZIP 重名处理** | `useBatchProcessor.ts` | 使用 `name (N).ext` 后缀，计数器基于原始文件名 | ✅ |
+| Q6 | 🟢 | **下载反馈对所有下载方式生效** | `DownloadPanel.vue` | WebP/当前效果 等下拉下载也会触发主按钮 success 态（1.5s 自动恢复） | ✅ 体验一致 |
+| Q7 | 🟢 | **JSZip 类型安全** | `useBatchProcessor.ts` | `resultBlob!` 断言安全（filter 已筛选） | ✅ |
+| Q8 | 🟢 | **进度动画清理** | `useBackgroundRemover.ts` | `abortCurrent`/`reset`/catch 均调用 `stopProgressSimulation` | ✅ 无泄漏 |
+
+### 文件变更
+
+```
+modified:   frontend/src/composables/useBackgroundRemover.ts      (+68行)
+modified:   frontend/src/composables/useBatchProcessor.ts         (+35行)
+modified:   frontend/src/components/BatchPanel.vue                (+35行)
+modified:   frontend/src/components/DownloadPanel.vue             (+30行)
+modified:   frontend/src/pages/WorkspacePage.vue                  (+2行)
+modified:   frontend/src/components/PreviewGrid.vue               (+1行)
+added:      node_modules/jszip/...                                (新依赖)
+---
+构建: ✅ 通过 (117 modules, 1.46s)
+Lint: ✅ 零错误
+```
+
+---
+
 
 ### 🏗 中期战役：API 服务化 (Phase 6)
 
@@ -658,5 +703,5 @@ useBatchProcessor.ts, package.json — 净增 ~284 行
 
 ---
 
-> **当前状态**：Phase 1~4 全部交付。G23 用户体系已上线。G28 体验重构完成。G29～G30 修复 40/48 项。G31 产品设计分析（20 项 UX 缺陷 + 10 项方案 + 6 Sprint 路线图）。**G32 Sprint A 已实施**（草稿保护 + 透明底下载 + 批量重试 + 构建修复）。
-> **下一步**：Sprint B（处理等待重构 + ZIP 下载，1.5 天）。
+> **当前状态**：Phase 1~4 全部交付。G23 用户体系已上线。G28 体验重构完成。G29～G30 修复 40/48 项。G31 产品设计分析。**Sprint A+B 已实施**（共 9 项 UX 核心优化：草稿保护/透明底下载/批量重试/构建修复/进度模拟+ETA/ZIP下载/精修进度/背景过渡/下载反馈）。
+> **下一步**：Sprint C（新用户引导 + 配额卡片 CTA，1天）或 Sprint D（精修缩放 + 历史全尺寸原图 + 键盘快捷键，1.5天）。

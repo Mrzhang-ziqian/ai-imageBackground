@@ -2,6 +2,7 @@ import { ref, reactive, computed, shallowRef, readonly } from 'vue';
 import type { BatchItem, BatchItemStatus, BatchPhase, ImageDimensions } from '@/types';
 import { uploadAndRemoveBg } from '@/services/api';
 import type { HistoryEntry } from '@/types';
+import JSZip from 'jszip';
 
 /**
  * 批量处理组合式函数。
@@ -260,7 +261,45 @@ export function useBatchProcessor() {
 
   // ---- Bulk Download ----
 
-  /** 下载所有成功的结果 */
+  /** 将所有成功结果打包为 ZIP 并下载 */
+  async function downloadAsZip(): Promise<void> {
+    const doneItems = items.filter((i) => i.status === 'done' && i.resultBlob);
+    if (doneItems.length === 0) return;
+
+    const zip = new JSZip();
+    const names = new Map<string, number>();
+
+    for (const item of doneItems) {
+      const blob = item.resultBlob!;
+      const baseName = item.resultFilename || `removed_bg.png`;
+
+      // 处理重名：name (1).png, name (2).png
+      let fileName = baseName;
+      const count = names.get(baseName) || 0;
+      if (count > 0) {
+        const dot = baseName.lastIndexOf('.');
+        const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+        const ext = dot > 0 ? baseName.slice(dot) : '.png';
+        fileName = `${stem} (${count})${ext}`;
+      }
+      names.set(baseName, count + 1);
+
+      zip.file(fileName, blob);
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `removed_bg_batch_${doneItems.length}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /** 下载所有成功的结果（逐个下载，保留兼容） */
   function downloadAll(): void {
     const doneItems = items.filter((i) => i.status === 'done' && i.resultBlob);
     if (doneItems.length === 0) return;
@@ -312,6 +351,7 @@ export function useBatchProcessor() {
     retryAllErrors,
     getBatchResultData,
     downloadAll,
+    downloadAsZip,
     destroy,
   };
 }

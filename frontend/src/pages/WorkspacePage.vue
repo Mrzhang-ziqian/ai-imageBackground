@@ -459,7 +459,10 @@ async function handleBatchChoiceRefine(): void {
   const files = batchChoiceFiles.value;
   if (files.length === 0) return;
   ui.showToast({ message: `开始逐张处理 ${files.length} 张图片`, type: 'success' });
+  let idx = 0;
   for (const file of files) {
+    idx++;
+    ui.showToast({ message: `正在处理第 ${idx}/${files.length} 张`, type: 'success' });
     await doProcessFile(file);
   }
   ui.showToast({ message: `${files.length} 张图片处理完成`, type: 'success' });

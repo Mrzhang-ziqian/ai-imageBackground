@@ -38,6 +38,10 @@ export function useBackgroundRemover() {
 
   let abortController: AbortController | null = null;
 
+  /** 处理阶段模拟进度定时器 */
+  let progressAnimTimer: ReturnType<typeof setInterval> | null = null;
+  let progressRafId: number | null = null;
+
   /** 边缘编辑前的透明 Blob 快照（用于撤销边缘修改） */
   let preEditTransparentBlob: Blob | null = null;
 
@@ -102,6 +106,14 @@ export function useBackgroundRemover() {
 
     abortController = new AbortController();
 
+    // 根据文件大小估算处理时长（毫秒）
+    const totalKb = file.size / 1024;
+    const estDurationMs =
+      totalKb < 100 ? 4000 :
+      totalKb < 500 ? 9000 :
+      totalKb < 2000 ? 18000 :
+      totalKb < 5000 ? 35000 : 55000;
+
     try {
       const result = await uploadAndRemoveBg(
         file,
@@ -117,20 +129,15 @@ export function useBackgroundRemover() {
             processing.status = 'processing';
             processing.message = 'AI 正在移除背景...';
             processing.progress = 30;
-            const totalKb = file.size / 1024;
-            processing.detail =
-              totalKb < 100
-                ? '约 2-5 秒'
-                : totalKb < 500
-                  ? '约 5-10 秒'
-                  : totalKb < 2000
-                    ? '约 10-20 秒'
-                    : '约 20-60 秒';
+            updateEta();
+            // 启动平滑进度模拟（从 30% 线性增长到 ~88%，覆盖估算时长的 85%）
+            startProgressSimulation(estDurationMs);
           }
         },
         abortController.signal,
       );
 
+      stopProgressSimulation();
       await animateToFinish();
 
       processing.status = 'done';
@@ -146,6 +153,7 @@ export function useBackgroundRemover() {
 
       return null;
     } catch (err: unknown) {
+      stopProgressSimulation();
       if (err instanceof DOMException && err.name === 'AbortError') {
         return null;
       }
@@ -169,6 +177,70 @@ export function useBackgroundRemover() {
     const file = currentFile.value;
     if (!file) return '没有可重试的文件';
     return _doProcess(file, true);
+  }
+
+  /**
+   * 启动处理阶段进度模拟。
+   * 从 30% 缓慢增长到 88%，让用户感知到"正在工作"。
+   * 如果 API 提前返回，外部会调用 stopProgressSimulation 停止。
+   */
+  function startProgressSimulation(estDurationMs: number): void {
+    stopProgressSimulation();
+    const startTime = Date.now();
+    const targetDuration = estDurationMs * 0.85; // 85% 时长覆盖
+
+    progressAnimTimer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const ratio = Math.min(elapsed / targetDuration, 1);
+      // 使用缓入曲线：开始快，靠近目标放缓
+      const easedRatio = 1 - Math.pow(1 - ratio, 1.5);
+      processing.progress = Math.round(30 + easedRatio * 58); // 30 → 88
+      updateEta(elapsed, ratio);
+    }, 200);
+  }
+
+  /** 停止进度模拟 */
+  function stopProgressSimulation(): void {
+    if (progressAnimTimer !== null) {
+      clearInterval(progressAnimTimer);
+      progressAnimTimer = null;
+    }
+    if (progressRafId !== null) {
+      cancelAnimationFrame(progressRafId);
+      progressRafId = null;
+    }
+  }
+
+  /** 更新预计剩余时间 */
+  function updateEta(elapsedMs?: number, ratio?: number): void {
+    const estTotal = (() => {
+      const totalKb = (currentFile.value?.size ?? 0) / 1024;
+      if (totalKb < 100) return 4000;
+      if (totalKb < 500) return 9000;
+      if (totalKb < 2000) return 18000;
+      if (totalKb < 5000) return 35000;
+      return 55000;
+    })();
+
+    const effectiveElapsed = elapsedMs ?? 0;
+    const effectiveRatio = ratio ?? 0;
+
+    if (effectiveRatio > 0 && effectiveElapsed > 1000) {
+      // 根据实际耗时动态修正 ETA
+      const correctedTotal = effectiveElapsed / effectiveRatio;
+      const remaining = Math.max(0, correctedTotal - effectiveElapsed);
+      const s = Math.round(remaining / 1000);
+      processing.detail = s > 60
+        ? `预计还需 ${Math.floor(s / 60)} 分 ${s % 60} 秒`
+        : s > 0
+          ? `预计还需 ${s} 秒`
+          : '即将完成...';
+    } else {
+      const s = Math.round(estTotal / 1000);
+      processing.detail = s > 60
+        ? `预计 ${Math.floor(s / 60)} 分 ${s % 60} 秒`
+        : `预计 ${s} 秒`;
+    }
   }
 
   /**
@@ -426,6 +498,7 @@ export function useBackgroundRemover() {
       abortController.abort();
       abortController = null;
     }
+    stopProgressSimulation();
   }
 
   function revokeAllUrls(): void {

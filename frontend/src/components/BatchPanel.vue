@@ -156,13 +156,21 @@
             <span v-else class="mini-spinner-inline"></span>
             {{ retryingSome ? '重试中...' : `重试全部失败 (${batch.errorCount.value})` }}
           </button>
-          <button class="btn-download-all" @click="batch.downloadAll()" v-if="batch.doneCount.value > 0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <!-- ZIP 下载（主按钮） -->
+          <button
+            v-if="batch.doneCount.value > 0"
+            class="btn-download-all btn-download-zip"
+            :class="{ downloading: zipping }"
+            @click="onDownloadZip"
+            :disabled="zipping"
+          >
+            <svg v-if="!zipping" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
               <polyline points="7 10 12 15 17 10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            全部下载 ({{ batch.doneCount.value }})
+            <span v-else class="mini-spinner-inline"></span>
+            {{ zipping ? '打包中...' : `ZIP 下载 (${batch.doneCount.value} 张)` }}
           </button>
           <button class="btn-back" @click="$emit('reset')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -267,6 +275,9 @@ const resultUrls = ref<Map<string, string>>(new Map());
 const retryingIds = ref<Set<string>>(new Set());
 const retryingSome = ref(false);
 
+/** ZIP 下载状态 */
+const zipping = ref(false);
+
 function getResultUrl(item: BatchItem): string {
   if (!item.resultBlob) return '';
   const existing = resultUrls.value.get(item.id);
@@ -317,6 +328,18 @@ async function onRetryAll(): Promise<void> {
     // retryAllErrors 内部已处理错误
   } finally {
     retryingSome.value = false;
+  }
+}
+
+async function onDownloadZip(): Promise<void> {
+  zipping.value = true;
+  try {
+    await props.batch.downloadAsZip();
+    emit('toast', { message: `ZIP 已下载: ${props.batch.doneCount.value} 张图片`, type: 'success' });
+  } catch (err) {
+    emit('toast', { message: 'ZIP 打包失败，请重试', type: 'error' });
+  } finally {
+    zipping.value = false;
   }
 }
 </script>
@@ -795,6 +818,26 @@ async function onRetryAll(): Promise<void> {
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
   display: inline-block;
+}
+
+/* ZIP 下载按钮 */
+.btn-download-zip {
+  background: #10b981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+.btn-download-zip:hover:not(:disabled) {
+  background: #059669;
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+}
+.btn-download-zip.downloading {
+  background: #d1fae5;
+  color: #065f46;
+  box-shadow: none;
+  cursor: default;
+}
+.btn-download-zip:disabled {
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 /* ---- 旋转动画 ---- */

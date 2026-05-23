@@ -350,6 +350,7 @@ function onError(type: 'original' | 'result') {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  transition: background-color 0.35s ease;
 }
 
 .preview-box img {
