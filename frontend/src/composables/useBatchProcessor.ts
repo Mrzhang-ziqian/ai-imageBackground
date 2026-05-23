@@ -162,6 +162,59 @@ export function useBatchProcessor() {
     }
   }
 
+  /** 重试单个失败项 */
+  async function retryItem(id: string): Promise<void> {
+    const item = items.find((i) => i.id === id);
+    if (!item || item.status !== 'error') return;
+
+    // 重置状态
+    item.status = 'queued';
+    item.progress = 0;
+    item.message = '等待重试';
+    item.error = null;
+    item.resultBlob = null;
+
+    // 创建独立的 abort controller
+    const controller = new AbortController();
+
+    try {
+      await processOneItem(item, controller.signal);
+    } finally {
+      // 如果当前不是 processing 阶段，检查是否所有项都完成了
+      if (allDone.value) {
+        phase.value = 'done';
+      }
+    }
+  }
+
+  /** 重试所有失败项 */
+  async function retryAllErrors(): Promise<void> {
+    const errorItems = items.filter((i) => i.status === 'error');
+    if (errorItems.length === 0) return;
+
+    phase.value = 'processing';
+    const controller = new AbortController();
+
+    // 重置所有失败项状态
+    for (const item of errorItems) {
+      item.status = 'queued';
+      item.progress = 0;
+      item.message = '等待重试';
+      item.error = null;
+      item.resultBlob = null;
+    }
+
+    for (const item of errorItems) {
+      if (controller.signal.aborted) break;
+      currentIndex.value = items.indexOf(item);
+      await processOneItem(item, controller.signal);
+    }
+
+    if (!controller.signal.aborted) {
+      phase.value = 'done';
+    }
+  }
+
   /** 取消当前正在处理的批次 */
   function cancelProcessing(): void {
     if (batchAbortController) {
@@ -255,6 +308,8 @@ export function useBatchProcessor() {
     clearItems,
     startProcessing,
     cancelProcessing,
+    retryItem,
+    retryAllErrors,
     getBatchResultData,
     downloadAll,
     destroy,

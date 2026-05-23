@@ -63,7 +63,7 @@
                       {{ showDeleteConfirm ? '确认删除?' : '删除草稿' }}
                     </button>
                   </div>
-                  <p class="action-hint">确认后将保存到处理历史，未确认的草稿不会出现在历史记录中。</p>
+                  <p class="action-hint">确认后将保存到历史并从本页移除，未确认的草稿不会出现在历史记录中。</p>
                 </div>
 
                 <BackgroundColorPicker
@@ -98,6 +98,36 @@
     <AppFooter />
     <ToastMessage :toast="ui.toast" />
     <AuthModal :visible="ui.authModalVisible" @close="ui.closeAuthModal()" />
+
+    <!-- 离开确认对话框 -->
+    <Transition name="modal-fade">
+      <div v-if="showLeaveConfirm" class="modal-overlay" @click.self="handleCancelLeave">
+        <div class="leave-confirm-dialog">
+          <div class="leave-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 9v2m0 4h.01"/>
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            </svg>
+          </div>
+          <h3 class="leave-title">你有未保存的编辑</h3>
+          <p class="leave-desc">
+            你对图片做了修改（如背景色、模板、边缘编辑），离开本页将丢失这些修改。
+          </p>
+          <div class="leave-actions">
+            <button class="btn-leave-save" @click="handleLeaveWithSaving" :disabled="confirming">
+              <template v-if="!confirming">保存并返回</template>
+              <span v-else class="mini-spinner"></span>
+            </button>
+            <button class="btn-leave-discard" @click="handleLeaveWithoutSaving" :disabled="confirming">
+              放弃编辑
+            </button>
+            <button class="btn-leave-cancel" @click="handleCancelLeave">
+              继续编辑
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -132,6 +162,11 @@ const loading = ref(true);
 const confirming = ref(false);
 const deleting = ref(false);
 const hasOriginal = ref(true);
+
+/** 跟踪是否有未保存的编辑 */
+const hasUnsavedEdits = ref(false);
+/** 离开确认对话框 */
+const showLeaveConfirm = ref(false);
 
 /** 跟踪本组件创建的 Object URL，组件卸载时统一回收 */
 const trackedUrls: string[] = [];
@@ -186,7 +221,7 @@ onMounted(async () => {
   if (!hasOriginal.value) {
     ui.showToast({
       message: '原始图片数据已丢失，对比功能已禁用',
-      type: 'warning',
+      type: 'error',
     });
   }
 
@@ -228,6 +263,7 @@ async function handleConfirm(): Promise<void> {
     await quota.syncFromServer();
     // 从草稿箱移除
     await drafts.remove(draftId);
+    hasUnsavedEdits.value = false;
     ui.showToast({ message: '已确认完成，保存到处理历史', type: 'success' });
     // 携带 confirmed 参数，WorkspacePage 检测后刷新历史
     router.replace({ path: '/workspace', query: { confirmed: '1' } });
@@ -267,26 +303,52 @@ async function handleDelete(): Promise<void> {
 
 /** 返回工作台（保留草稿） */
 function handleBack(): void {
+  if (hasUnsavedEdits.value) {
+    showLeaveConfirm.value = true;
+    return;
+  }
   router.push('/workspace');
+}
+
+/** 放弃编辑并返回 */
+function handleLeaveWithoutSaving(): void {
+  showLeaveConfirm.value = false;
+  router.push('/workspace');
+}
+
+/** 保存并返回 */
+function handleLeaveWithSaving(): void {
+  showLeaveConfirm.value = false;
+  handleConfirm();
+}
+
+/** 取消离开 */
+function handleCancelLeave(): void {
+  showLeaveConfirm.value = false;
 }
 
 // ---- 编辑工具事件 ----
 async function handleBgColorChange(color: BgColor): Promise<void> {
   const err = await remover.applyBackgroundColor(color);
   if (err) ui.showToast({ message: err, type: 'error' });
+  else hasUnsavedEdits.value = true;
 }
 
 async function handleTemplateChange(templateId: string | null): Promise<void> {
   const err = await remover.applyTemplate(templateId);
   if (err) ui.showToast({ message: err, type: 'error' });
+  else hasUnsavedEdits.value = true;
 }
 
 function handleEdgeUpdate(blob: Blob): void {
   remover.updateTransparentBlob(blob);
+  hasUnsavedEdits.value = true;
 }
 
 function handleEdgeReset(): void {
   remover.resetEdgeEdits();
+  // 注意：不重置 hasUnsavedEdits，因为用户可能同时修改了背景色/模板
+  // 边缘情况的误报（仅做了边缘修改并重置）比漏报（数据丢失）更安全
   ui.showToast({ message: '已撤销边缘修改', type: 'success' });
 }
 </script>
@@ -474,4 +536,103 @@ function handleEdgeReset(): void {
   .tools-col { gap: 8px; }
   .action-buttons { flex-direction: column; }
 }
+
+/* 离开确认对话框 */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.leave-confirm-dialog {
+  background: #fff;
+  border-radius: 20px;
+  padding: 32px 28px 24px;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.16);
+}
+
+.leave-icon {
+  color: #f59e0b;
+  margin-bottom: 12px;
+}
+
+.leave-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 8px;
+}
+
+.leave-desc {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.leave-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-leave-save {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 12px;
+  background: #10b981;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-leave-save:hover:not(:disabled) { background: #059669; }
+.btn-leave-save:disabled { opacity: 0.7; cursor: not-allowed; }
+
+.btn-leave-discard {
+  padding: 10px 24px;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  background: #fff;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-leave-discard:hover:not(:disabled) { background: #fef2f2; }
+.btn-leave-discard:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-leave-cancel {
+  padding: 10px 24px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-leave-cancel:hover { background: #f9fafb; }
+
+/* 模态框动画 */
+.modal-fade-enter-active { transition: all 0.2s ease; }
+.modal-fade-leave-active { transition: all 0.15s ease-in; }
+.modal-fade-enter-from { opacity: 0; }
+.modal-fade-enter-from .leave-confirm-dialog { transform: scale(0.95) translateY(8px); }
+.modal-fade-leave-to { opacity: 0; }
 </style>

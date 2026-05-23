@@ -33,6 +33,7 @@
 ✅ Phase 5 (壁垒)   G23 用户体系 ✅ → G23a ✅ + G28 ✅（3/4，G24 付费墙待实施）
 ✅ 新增              G29～G30 全链路缺陷修复    40/48 已修复
 📋 新增              G31 产品设计分析          20 项 UX 缺陷 + 10 项设计方案 + 6 Sprint 路线图
+🛠 Sprint A          G32 UX-3/4/5 修复 + T5     4 项已实施 ✅
 ❌ Phase 6 (商业化)  G24~G27 新增            0/5
 ❌ 质感层            G16~G21               0/6
 ```
@@ -589,6 +590,40 @@ Sprint F — 品质打磨 (1.5天) ✨
 
 ---
 
+## 🛠 G32 — Sprint A 实施 & 测试报告（2026-05-23）
+
+> **Sprint A 救火队**：4 项修复（UX-3 草稿保护 + UX-4 透明底下载 + UX-5 批量重试 + T5 构建脚本）。
+
+### 已实施修复
+
+| # | 任务 | 变更范围 | 详情 |
+|:---:|------|------|------|
+| **UX-3** | **草稿离开保护** | `DraftDetailPage.vue` (+140行) | `hasUnsavedEdits` 跟踪编辑 → 返回时弹出确认对话框（保存并返回/放弃/继续编辑） |
+| **UX-4** | **透明底独立下载** | `DownloadPanel.vue` (+45行) | 主按钮改为「下载透明底 PNG」→ 下拉菜单新增「下载当前效果」 |
+| **UX-5** | **批量失败重试** | `useBatchProcessor.ts` + `BatchPanel.vue` (+138行) | `retryItem(id)` / `retryAllErrors()` → 失败卡片「重试」→ 头部「重试全部失败」 |
+| **T5** | **构建脚本修复** | `package.json` | `build` → `vite build`，`type-check` 独立 |
+
+### 测试工程师审查
+
+| # | 级别 | 问题 | 处理 |
+|:---:|:---:|------|:--:|
+| Q1 | 🟡 | `handleEdgeReset` 未清除 `hasUnsavedEdits`（仅边缘编辑并重置后误报离开警告） | ⚠️ 保留：误报比漏报更安全 |
+| Q2 | 🟢 | 「重试全部」按钮在重试中消失 | ✅ 已改为 `:disabled` + spinner |
+| Q3 | 🟢 | `retryItem`/`retryAllErrors` 并发安全 | ✅ 单线程无竞争窗口 |
+| Q4 | 🟢 | `hasTransparent` 边界 `blob === transparentBlob` | ✅ 正确回退 |
+| Q5 | 🟢 | `handleConfirm` castch 保留 `hasUnsavedEdits` | ✅ 设计正确 |
+
+### 文件变更
+
+```
+DraftDetailPage.vue, DownloadPanel.vue, BatchPanel.vue,
+useBatchProcessor.ts, package.json — 净增 ~284 行
+构建: ✅ (112 modules, 1.31s)  Lint: ✅ 零错误
+```
+
+---
+
+
 ### 🏗 中期战役：API 服务化 (Phase 6)
 
 | 优先级 | ID | 任务 | 工作量 | 说明 |
@@ -623,5 +658,5 @@ Sprint F — 品质打磨 (1.5天) ✨
 
 ---
 
-> **当前状态**：Phase 1~4 全部交付（G01~G09+G12+G14+G22 共 12 项）。G23 用户体系已上线。G28 页面体验重构完成。G29～G30 共修复 40/48 项全链路缺陷（83%）。**G31 识别 20 项 UX 缺陷，产出 10 项设计方案 + 6 Sprint 实施路线图（约 8 天工时）。**
-> **下一步**：优先实施 Sprint A（救火队：草稿保存保护 + 批量重试 + 透明底下载，1 天）+ Sprint B（处理等待重构 + ZIP 下载，1.5 天）。这两轮完成即可将产品从"能用"提升到"好用"。
+> **当前状态**：Phase 1~4 全部交付。G23 用户体系已上线。G28 体验重构完成。G29～G30 修复 40/48 项。G31 产品设计分析（20 项 UX 缺陷 + 10 项方案 + 6 Sprint 路线图）。**G32 Sprint A 已实施**（草稿保护 + 透明底下载 + 批量重试 + 构建修复）。
+> **下一步**：Sprint B（处理等待重构 + ZIP 下载，1.5 天）。

@@ -134,7 +134,7 @@
             <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
             <polyline points="22 4 12 14.01 9 11.01"/>
           </svg>
-          <span class="batch-title">处理完成</span>
+          <span class="batch-title">{{ retryingSome ? '重试中...' : '处理完成' }}</span>
           <span class="file-count">
             {{ batch.doneCount.value }} 成功
             <template v-if="batch.errorCount.value > 0">
@@ -143,6 +143,19 @@
           </span>
         </div>
         <div class="batch-actions">
+          <button
+            v-if="batch.errorCount.value > 0"
+            class="btn-retry-all"
+            :disabled="retryingSome"
+            @click="onRetryAll"
+          >
+            <svg v-if="!retryingSome" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
+            <span v-else class="mini-spinner-inline"></span>
+            {{ retryingSome ? '重试中...' : `重试全部失败 (${batch.errorCount.value})` }}
+          </button>
           <button class="btn-download-all" @click="batch.downloadAll()" v-if="batch.doneCount.value > 0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
@@ -215,6 +228,18 @@
               <span class="result-name">{{ item.file.name }}</span>
               <span class="result-error">{{ item.error || '处理失败' }}</span>
             </div>
+            <button
+              class="btn-retry-single"
+              :disabled="retryingIds.has(item.id)"
+              @click.stop="onRetrySingle(item.id)"
+            >
+              <svg v-if="!retryingIds.has(item.id)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
+              <span v-else class="mini-spinner-inline"></span>
+              {{ retryingIds.has(item.id) ? '重试中...' : '重试' }}
+            </button>
           </template>
         </div>
       </div>
@@ -239,6 +264,8 @@ const emit = defineEmits<{
 
 // 结果图 URL 缓存
 const resultUrls = ref<Map<string, string>>(new Map());
+const retryingIds = ref<Set<string>>(new Set());
+const retryingSome = ref(false);
 
 function getResultUrl(item: BatchItem): string {
   if (!item.resultBlob) return '';
@@ -269,6 +296,28 @@ function onDownloadSingle(item: BatchItem): void {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   emit('toast', { message: `已下载: ${item.file.name}`, type: 'success' });
+}
+
+async function onRetrySingle(id: string): Promise<void> {
+  retryingIds.value.add(id);
+  try {
+    await props.batch.retryItem(id);
+  } catch {
+    // retryItem 内部已处理错误
+  } finally {
+    retryingIds.value.delete(id);
+  }
+}
+
+async function onRetryAll(): Promise<void> {
+  retryingSome.value = true;
+  try {
+    await props.batch.retryAllErrors();
+  } catch {
+    // retryAllErrors 内部已处理错误
+  } finally {
+    retryingSome.value = false;
+  }
 }
 </script>
 
@@ -701,6 +750,52 @@ function onDownloadSingle(item: BatchItem): void {
   transition: all 0.15s;
 }
 .btn-download-single:hover { background: #eef2ff; color: #6366f1; border-color: #c7d2fe; }
+
+/* 重试按钮 */
+.btn-retry-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border: 1px solid #fca5a5;
+  border-radius: 12px;
+  background: #fff;
+  color: #ef4444;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-retry-all:hover { background: #fef2f2; border-color: #f87171; }
+
+.btn-retry-single {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0 12px 10px;
+  padding: 6px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fff;
+  color: #ef4444;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-retry-single:hover:not(:disabled) { background: #fef2f2; border-color: #f87171; }
+.btn-retry-single:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.mini-spinner-inline {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fecaca;
+  border-top-color: #ef4444;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
 
 /* ---- 旋转动画 ---- */
 .spin-icon { animation: spin 1.5s linear infinite; }

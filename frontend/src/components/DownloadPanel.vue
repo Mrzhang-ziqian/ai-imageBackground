@@ -1,15 +1,18 @@
 <template>
   <section class="download-section">
     <div class="download-panel">
-      <!-- 主下载按钮 -->
-      <button class="btn-download-primary" @click="onDownloadPng">
+      <!-- 主下载按钮：默认下载透明底 PNG -->
+      <button class="btn-download-primary" @click="onDownloadTransparentPng" :disabled="!canDownloadTransparent">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        下载 PNG
-        <span v-if="sizes.png" class="file-size">{{ sizes.png }}</span>
+        <span class="download-label">
+          <template v-if="hasTransparent">下载透明底 PNG</template>
+          <template v-else>下载 PNG</template>
+        </span>
+        <span v-if="sizes.transparent" class="file-size">{{ sizes.transparent }}</span>
       </button>
 
       <!-- 更多选项下拉 -->
@@ -27,6 +30,26 @@
 
         <Transition name="dropdown">
           <div v-if="open" class="dropdown-menu">
+            <!-- 当前效果下载（含背景色） -->
+            <button
+              v-if="hasTransparent"
+              class="dropdown-item"
+              @click="onDownloadCurrent"
+              :disabled="!props.blob"
+            >
+              <div class="item-icon current-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/>
+                </svg>
+              </div>
+              <div class="item-text">
+                <span class="item-label">下载当前效果</span>
+                <span class="item-desc">含背景色/模板效果</span>
+              </div>
+              <span v-if="sizes.current" class="item-size">{{ sizes.current }}</span>
+            </button>
+
             <!-- WebP 下载 -->
             <button class="dropdown-item" @click="onDownloadWebp" :disabled="converting">
               <div class="item-icon webp-icon">W</div>
@@ -85,14 +108,20 @@ const converting = ref(false);
 const copied = ref(false);
 const dropdownRef = ref<HTMLElement | null>(null);
 
+// 是否有透明底可用
+const hasTransparent = computed(() => !!props.transparentBlob && props.transparentBlob !== props.blob);
+const canDownloadTransparent = computed(() => !!(hasTransparent.value ? props.transparentBlob : props.blob));
+
 // ---- 文件大小估算 ----
 const sizes = computed(() => {
-  const b = props.blob;
-  if (!b) return { png: '', webp: '' };
-  const pngSize = formatFileSize(b.size);
-  // WebP 一般比 PNG 小 30-60%
-  const webpEst = Math.round(b.size * 0.4);
-  return { png: pngSize, webp: formatFileSize(webpEst) };
+  const transparent = hasTransparent.value ? props.transparentBlob : null;
+  const current = props.blob;
+  return {
+    transparent: transparent ? formatFileSize(transparent.size) : '',
+    current: current ? formatFileSize(current.size) : '',
+    // WebP 一般比 PNG 小 30-60%
+    webp: current ? formatFileSize(Math.round(current.size * 0.4)) : '',
+  };
 });
 
 // ---- 点击外部关闭 ----
@@ -159,11 +188,19 @@ function triggerDownload(blob: Blob, name: string) {
   URL.revokeObjectURL(url);
 }
 
-// ---- PNG 下载 ----
-async function onDownloadPng() {
+// ---- 透明底 PNG 下载（主按钮）----
+function onDownloadTransparentPng() {
+  const blob = hasTransparent.value ? props.transparentBlob : props.blob;
+  if (!blob) return;
+  triggerDownload(blob, props.filename);
+}
+
+// ---- 当前效果下载（含背景色/模板）----
+function onDownloadCurrent() {
   const blob = props.blob;
   if (!blob) return;
   triggerDownload(blob, props.filename);
+  open.value = false;
 }
 
 // ---- WebP 下载 ----
@@ -270,6 +307,10 @@ async function onCopy() {
   border-radius: 6px;
 }
 
+.download-label {
+  white-space: nowrap;
+}
+
 /* ---- 更多按钮 ---- */
 .dropdown-wrapper {
   position: relative;
@@ -353,6 +394,11 @@ async function onCopy() {
   font-size: 14px;
   font-weight: 800;
   letter-spacing: -0.5px;
+}
+
+.current-icon {
+  background: #fef3c7;
+  color: #d97706;
 }
 
 .copy-icon {
