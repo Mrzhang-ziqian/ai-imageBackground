@@ -21,8 +21,7 @@
           active: activeId === entry.id,
           blocked: entry.status === 'blocked',
         }"
-        :disabled="entry.status === 'blocked'"
-        @click="entry.status === 'blocked' ? null : $emit('restore', entry)"
+        @click="entry.status === 'blocked' ? $emit('retry-blocked', entry.id) : $emit('restore', entry)"
       >
         <div class="card-thumbs">
           <!-- 原图缩略图 -->
@@ -56,12 +55,13 @@
           <!-- 结果缩略图 -->
           <div class="thumb-box result">
             <template v-if="entry.status === 'blocked'">
-              <!-- blocked: 显示锁图标 -->
+              <!-- blocked: 显示锁图标 + 重试提示 -->
               <div class="thumb-blocked">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                   <path d="M7 11V7a5 5 0 0110 0v4"/>
                 </svg>
+                <span class="thumb-blocked-label">点击重试</span>
               </div>
             </template>
             <template v-else>
@@ -90,7 +90,7 @@
           <span class="card-name" :title="entry.filename">{{ entry.filename }}</span>
           <span class="card-dims">
             <template v-if="entry.status === 'blocked'">
-              <span class="blocked-badge">今日额度已满</span>
+              <span class="blocked-badge">今日已满·可重试</span>
             </template>
             <template v-else>
               {{ entry.width }}×{{ entry.height }}
@@ -127,6 +127,7 @@ defineEmits<{
   (e: 'restore', entry: HistoryEntry): void;
   (e: 'remove', id: number): void;
   (e: 'clear'): void;
+  (e: 'retry-blocked', id: number): void;
 }>();
 
 // ---- 图片加载状态追踪 ----
@@ -309,10 +310,19 @@ function onThumbError(id: number, type: 'original' | 'result') {
   width: 100%;
   height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 3px;
   color: #d1d5db;
   background: #f3f4f6;
+}
+
+.thumb-blocked-label {
+  font-size: 8px;
+  font-weight: 600;
+  color: #9ca3af;
+  line-height: 1;
 }
 
 .dimmed {

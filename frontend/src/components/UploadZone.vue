@@ -25,6 +25,7 @@
         <h3>拖拽图片到此处</h3>
         <p>或 <span class="link">点击选择文件</span></p>
         <p class="hint">支持 PNG、JPEG、WebP 格式，最大 20MB</p>
+        <p v-if="quotaText" class="quota-hint">{{ quotaText }}</p>
       </div>
     </div>
   </section>
@@ -42,6 +43,7 @@ const emit = defineEmits<{
 
 const props = defineProps<{
   validateFile: (file: File | null) => FileValidationResult;
+  quotaText?: string;
 }>();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);

@@ -139,6 +139,17 @@ body {
   margin-top: 12px;
 }
 
+.quota-hint {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6366f1;
+  background: #eef2ff;
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
 /* --- Preview Box (result) - Chessboard Pattern --- */
 .result-box:not(.has-bg) {
   background-image:
