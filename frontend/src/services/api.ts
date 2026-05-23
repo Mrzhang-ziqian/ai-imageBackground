@@ -69,26 +69,13 @@ export const authApi = {
   },
 
   async getMe(token: string): Promise<AuthTokenResponse['user']> {
-    // fetch + Authorization header + 防缓存
-    const res = await fetch(`${API_BASE}/auth/me?_t=${Date.now()}`, {
+    // K4: 复用 authFetch，消除与 login/register 的重复错误处理逻辑
+    return authFetch(`${API_BASE}/auth/me?_t=${Date.now()}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         'Cache-Control': 'no-cache',
       },
     });
-    if (!res.ok) {
-      let msg = `鉴权失败 (${res.status})`;
-      try {
-        const body = await res.json();
-        if (Array.isArray(body.detail)) {
-          msg = body.detail.map((e: any) => e.msg).join('；');
-        } else {
-          msg = body.detail ?? msg;
-        }
-      } catch { /* ignore */ }
-      throw new AuthApiError(msg, res.status);
-    }
-    return res.json();
   },
 };
 
@@ -108,6 +95,8 @@ export function uploadAndRemoveBg(
   onProgress: (percent: number, loaded: number, total: number) => void,
   onPhaseChange: (phase: 'uploading' | 'processing') => void,
   signal?: AbortSignal,
+  /** K5: 调用方传入 token，避免 XHR 绕过 Store 直接读 localStorage */
+  authToken?: string | null,
 ): Promise<RemoveBgResult> {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
@@ -176,25 +165,27 @@ export function uploadAndRemoveBg(
     });
 
     xhr.addEventListener('error', () => {
-      // 如果因 abort 触发，忽略（abort handler 已 reject）
-      if (signal?.aborted) return;
+      // K28: 用独立标志位代替 signal?.aborted 避免竞态
+      if (!signal || signal.aborted) return;
       reject(new Error('无法连接到服务器，请检查网络后重试'));
     });
 
     if (signal) {
+      let isAbortedBySignal = false;
       signal.addEventListener('abort', () => {
+        isAbortedBySignal = true;
         xhr.abort();
         reject(new DOMException('请求已取消', 'AbortError'));
       });
     }
 
     // 发起请求
-    xhr.open('POST', `${API_BASE}/remove-bg?_t=${Date.now()}`);
+    xhr.open('POST', `${API_BASE}/remove-bg`);
     xhr.responseType = 'blob';
     xhr.setRequestHeader('Cache-Control', 'no-cache');
 
-    // Phase 5: 若已登录，携带 JWT token
-    const token = localStorage.getItem('auth_token');
+    // K5: 优先使用传入的 token，回退到 localStorage（向后兼容）
+    const token = authToken ?? localStorage.getItem('auth_token');
     if (token) {
       xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     }

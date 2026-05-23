@@ -335,28 +335,14 @@ function onCustomInput(event: Event): void {
 
 /* ---- 响应式 ---- */
 @media (max-width: 480px) {
-  .color-picker-panel {
-    padding: 12px 14px;
-  }
-
   .color-grid {
     grid-template-columns: repeat(4, 1fr);
     gap: 6px;
   }
 
-  .color-swatch {
-    width: 100%;
-    aspect-ratio: 1;
-  }
-
   .recent-dot {
     width: 24px;
     height: 24px;
-  }
-
-  .section-title {
-    font-size: 12px;
-    margin-bottom: 8px;
   }
 }
 </style>

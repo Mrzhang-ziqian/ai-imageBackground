@@ -3,12 +3,16 @@ Database setup — async SQLAlchemy + aiosqlite
 """
 import os
 import logging
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./data/app.db")
+# K11: 使用 __file__ 计算绝对路径，避免依赖 CWD
+_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "app.db"
+DEFAULT_DB_URL = f"sqlite+aiosqlite:///{_DB_PATH}"
+DATABASE_URL = os.environ.get("DATABASE_URL", DEFAULT_DB_URL)
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -22,6 +26,7 @@ class Base(DeclarativeBase):
 
 # ---------- 内置种子用户 ----------
 # 这些账号在首次启动时自动创建（已存在则跳过）。
+# K9: 生产环境务必通过环境变量覆盖默认密码
 SEED_USERS = [
     {
         "email": "admin@admin.com",
@@ -48,15 +53,24 @@ async def init_db() -> None:
 
     os.makedirs("data", exist_ok=True)
 
+    # K9: 使用默认密码时输出警告
+    for seed in SEED_USERS:
+        env_key = f"SEED_{seed['username'].upper()}_PASSWORD"
+        if os.environ.get(env_key) is None:
+            logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 {env_key} 环境变量")
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-        # --- 数据库迁移：为已有 history 表添加 status 列 ---
+        # K10: 先检查列是否存在，避免无意义的 ALTER TABLE 错误
         try:
-            await conn.execute(sa.text("ALTER TABLE history ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'completed'"))
-            logger.info("数据库迁移: history.status 列已添加")
+            result = await conn.execute(sa.text("PRAGMA table_info('history')"))
+            columns = [row[1] for row in result.fetchall()]
+            if 'status' not in columns:
+                await conn.execute(sa.text("ALTER TABLE history ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'completed'"))
+                logger.info("数据库迁移: history.status 列已添加")
         except sa.exc.OperationalError:
-            pass  # 列已存在，忽略
+            pass  # 表不存在（首次创建），忽略
 
     # 插入内置账号
     from auth import hash_password

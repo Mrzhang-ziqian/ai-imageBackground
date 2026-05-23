@@ -102,7 +102,7 @@
                 </div>
                 <h3 class="quota-exhausted-title">今日免费额度已用完</h3>
                 <p class="quota-exhausted-desc">
-                  免费版每日 {{ quota.quotaDaily.value }} 次已用完，明天自动重置。
+                  免费版每日 {{ quota.quotaDaily.value ?? 5 }} 次已用完，明天自动重置。
                 </p>
                 <div class="quota-exhausted-actions">
                   <button class="btn-upgrade-pro" @click="showProModal = true">
@@ -346,7 +346,7 @@ const quotaText = computed(() => {
   const user = auth.user.value;
   if (!user || user.plan !== 'free') return '';
   const left = quota.quotaLeft.value;
-  if (left <= 0) return '今日次数已用完';
+  if (left === null || left <= 0) return '今日次数已用完';
   return `今日剩余 ${left} 次免费处理`;
 });
 
@@ -450,7 +450,7 @@ const largeImageDialog = ref({
 
 async function handleFileSelected(file: File): Promise<void> {
   if (quota.isExhausted.value) {
-    ui.showToast({ message: `今日免费额度已用完 (${quota.quotaUsed.value}/${quota.quotaDaily.value})，明天自动重置`, type: 'error' });
+    ui.showToast({ message: `今日免费额度已用完 (${quota.quotaUsed.value}/${quota.quotaDaily.value ?? 5})，明天自动重置`, type: 'error' });
     return;
   }
   const validation = remover.validateFile(file);
@@ -488,7 +488,7 @@ async function handleBatchChoiceRefine(): void {
   const files = batchChoiceFiles.value;
   if (files.length === 0) return;
   if (quota.isExhausted.value) {
-    ui.showToast({ message: `今日免费额度已用完 (${quota.quotaUsed.value}/${quota.quotaDaily.value})，明天自动重置`, type: 'error' });
+    ui.showToast({ message: `今日免费额度已用完 (${quota.quotaUsed.value}/${quota.quotaDaily.value ?? 5})，明天自动重置`, type: 'error' });
     return;
   }
   ui.showToast({ message: `开始逐张处理 ${files.length} 张图片`, type: 'success' });

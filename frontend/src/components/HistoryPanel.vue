@@ -166,7 +166,15 @@ function thumbState(id: number): ThumbLoadingState | undefined {
 
 function ensureState(id: number): ThumbLoadingState {
   if (!thumbStates[id]) {
-    thumbStates[id] = { originalLoading: true, resultLoading: true, originalError: false, resultError: false };
+    // K18: blocked 条目设 resultLoading: false，避免 shimmer 永不停止
+    const entry = props.entries.find(e => e.id === id);
+    const isBlocked = entry?.status === 'blocked';
+    thumbStates[id] = {
+      originalLoading: true,
+      resultLoading: isBlocked ? false : true,
+      originalError: false,
+      resultError: false,
+    };
   }
   return thumbStates[id];
 }

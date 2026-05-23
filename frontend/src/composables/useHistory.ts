@@ -1,6 +1,5 @@
 import { ref, readonly, watch } from 'vue';
 import type { HistoryEntry } from '@/types';
-import { MAX_HISTORY } from '@/types';
 import { historyApi } from '@/services/api';
 import { useAuth } from './useAuth';
 
@@ -35,23 +34,20 @@ export function useHistory() {
     }
   }
 
-  /** 强制重新加载（用于确认草稿后同步） */
-  async function reload(): Promise<void> {
-    await load();
-  }
-
   // ---- 删除单条 ----
   async function remove(id: number): Promise<void> {
+    // K12: 乐观更新 → 先调 API，成功后再更新 UI（防止静默失败导致 UI 与后端不一致）
     try {
       await historyApi.remove(id);
       entries.value = entries.value.filter(e => e.id !== id);
     } catch {
-      // 静默失败
+      // 静默失败（API 失败时 UI 不变，用户可重试）
     }
   }
 
   // ---- 清空全部 ----
   async function clearAll(): Promise<void> {
+    // K12: 同上
     try {
       await historyApi.clearAll();
       entries.value = [];
@@ -74,7 +70,7 @@ export function useHistory() {
     loading: readonly(loading),
     loaded: readonly(loaded),
     load,
-    reload,
+    reload: load,
     remove,
     clearAll,
   };

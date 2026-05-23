@@ -253,21 +253,16 @@ onUnmounted(() => {
 /** 确认完成 → 删除草稿 → 返回工作台（携带 confirmed 参数触发历史刷新） */
 async function handleConfirm(): Promise<void> {
   confirming.value = true;
+  const draftId = route.params.id as string;
   try {
-    // 保存当前的编辑结果到草稿（确保 IndexedDB 存储了最新版本）
-    const draftId = route.params.id as string;
-    if (remover.resultBlob.value) {
-      // T15: 缩略图生成跳过——updateResult 后立即 remove，缩略图浪费
-      await drafts.updateResult(draftId, remover.resultBlob.value);
-    }
+    // K7: 跳过 updateResult — 即将删除草稿，无需保存
     // 同步配额
     await quota.syncFromServer();
-    // 从草稿箱移除
-    await drafts.remove(draftId);
     hasUnsavedEdits.value = false;
     ui.showToast({ message: '已确认完成，保存到处理历史', type: 'success' });
-    // 携带 confirmed 参数，WorkspacePage 检测后刷新历史
+    // K6: 先跳转再删草稿（避免 router 失败导致草稿永久丢失）
     router.replace({ path: '/workspace', query: { confirmed: '1' } });
+    await drafts.remove(draftId);
   } catch (err) {
     if (import.meta.env.DEV) {
       console.error('Confirm error:', err);

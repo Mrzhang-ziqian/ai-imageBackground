@@ -15,25 +15,28 @@ export function useQuota() {
 
   /** 已使用次数（仅登录用户有效） */
   const quotaUsed = computed(() => {
-    if (isLoggedIn.value && user.value) {
-      return user.value.quota_used ?? 0;
+    if (!isLoggedIn.value || !user.value) {
+      return 0;
     }
-    return 0;
+    return user.value.quota_used ?? 0;
   });
 
   /** 每日总额度（仅登录用户有效） */
   const quotaDaily = computed(() => {
-    if (isLoggedIn.value && user.value) {
-      return user.value.quota_daily ?? 5;
+    if (!isLoggedIn.value || !user.value) {
+      return null;
     }
-    return 5;
+    return user.value.quota_daily ?? 5;
   });
 
-  /** 剩余次数 */
-  const quotaLeft = computed(() => Math.max(0, quotaDaily.value - quotaUsed.value));
+  /** 剩余次数（K14: 未登录时返回 null 让 UI 显示加载态） */
+  const quotaLeft = computed(() => {
+    if (quotaDaily.value === null) return null;
+    return Math.max(0, quotaDaily.value - quotaUsed.value);
+  });
 
   /** 是否已用完 */
-  const isExhausted = computed(() => quotaLeft.value <= 0);
+  const isExhausted = computed(() => quotaLeft.value !== null && quotaLeft.value <= 0);
 
   /**
    * 成功处理一张图片后调用：从服务端重新拉取最新 quota。

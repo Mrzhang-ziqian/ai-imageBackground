@@ -12,6 +12,8 @@ const token = ref<string | null>(localStorage.getItem('auth_token'))
 const user = ref<UserInfo | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
+/** K3: 标记初始化是否完成（fetchMe 异步完成前 isLoggedIn 可能不准确） */
+const initialized = ref(false)
 
 // ---------- Computed ----------
 const isLoggedIn = computed(() => !!token.value && !!user.value)
@@ -26,7 +28,10 @@ const quotaLeft = computed(() => {
 // ---------- Actions ----------
 
 async function fetchMe(): Promise<void> {
-  if (!token.value) return
+  if (!token.value) {
+    initialized.value = true
+    return
+  }
   loading.value = true
   error.value = null
   try {
@@ -35,9 +40,13 @@ async function fetchMe(): Promise<void> {
     // 仅在真正的鉴权失败（401/403）时登出；网络抖动/超时不登出
     if (e instanceof AuthApiError && (e.status === 401 || e.status === 403)) {
       logout()
+    } else {
+      // K16: 非鉴权错误（网络、超时等）设置 error 让 UI 可重试
+      error.value = e instanceof Error ? e.message : '加载用户信息失败'
     }
   } finally {
     loading.value = false
+    initialized.value = true
   }
 }
 
@@ -91,6 +100,7 @@ export function useAuth() {
     user,
     loading,
     error,
+    initialized,
     isLoggedIn,
     userPlan,
     quotaLeft,

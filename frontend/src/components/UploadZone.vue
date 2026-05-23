@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref } from 'vue';
 import type { FileValidationResult } from '@/types';
 
 const emit = defineEmits<{
@@ -98,18 +98,5 @@ function handleFiles(fileList: FileList | null): void {
   }
 }
 
-// 全局拖拽：阻止浏览器默认打开文件
-function preventDefaults(e: DragEvent): void {
-  e.preventDefault();
-}
-
-onMounted(() => {
-  document.addEventListener('dragover', preventDefaults);
-  document.addEventListener('drop', preventDefaults);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('dragover', preventDefaults);
-  document.removeEventListener('drop', preventDefaults);
-});
+// K17: 仅 dropzone 内监听 dragover/drop，移除全局阻止（避免干扰其他组件）
 </script>

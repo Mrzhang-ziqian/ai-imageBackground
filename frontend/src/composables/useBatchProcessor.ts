@@ -3,6 +3,7 @@ import type { BatchItem, BatchItemStatus, BatchPhase, ImageDimensions } from '@/
 import { uploadAndRemoveBg } from '@/services/api';
 import type { HistoryEntry } from '@/types';
 import JSZip from 'jszip';
+import { useAuth } from './useAuth';
 
 /**
  * 批量处理组合式函数。
@@ -14,6 +15,7 @@ import JSZip from 'jszip';
  * - 支持取消全部
  */
 export function useBatchProcessor() {
+  const auth = useAuth();
   let _nextId = 0;
   function generateId(): string {
     return `batch_${Date.now()}_${++_nextId}`;
@@ -158,6 +160,7 @@ export function useBatchProcessor() {
           }
         },
         signal,
+        auth.token.value,  // K5: 从 Store 传入 token
       );
 
       if (signal.aborted) return;

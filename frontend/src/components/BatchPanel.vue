@@ -238,15 +238,15 @@
             </div>
             <button
               class="btn-retry-single"
-              :disabled="retryingIds.has(item.id)"
+              :disabled="!!retryingIds[item.id]"
               @click.stop="onRetrySingle(item.id)"
             >
-              <svg v-if="!retryingIds.has(item.id)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <svg v-if="!retryingIds[item.id]" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
                 <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
               </svg>
               <span v-else class="mini-spinner-inline"></span>
-              {{ retryingIds.has(item.id) ? '重试中...' : '重试' }}
+              {{ retryingIds[item.id] ? '重试中...' : '重试' }}
             </button>
           </template>
         </div>
@@ -270,9 +270,9 @@ const emit = defineEmits<{
   (e: 'reset'): void;
 }>();
 
-// 结果图 URL 缓存
-const resultUrls = ref<Map<string, string>>(new Map());
-const retryingIds = ref<Set<string>>(new Set());
+// 结果图 URL 缓存（K2: 普通对象替代 Map 确保 Vue 响应式）
+const resultUrls = ref<Record<string, string>>({});
+const retryingIds = ref<Record<string, boolean>>({});
 const retryingSome = ref(false);
 
 /** ZIP 下载状态 */
@@ -280,16 +280,16 @@ const zipping = ref(false);
 
 function getResultUrl(item: BatchItem): string {
   if (!item.resultBlob) return '';
-  const existing = resultUrls.value.get(item.id);
+  const existing = resultUrls.value[item.id];
   if (existing) return existing;
   const url = URL.createObjectURL(item.resultBlob);
-  resultUrls.value.set(item.id, url);
+  resultUrls.value[item.id] = url;
   return url;
 }
 
 function onImgError(item: BatchItem): void {
   // 图片加载失败时使用原图
-  resultUrls.value.set(item.id, item.originalUrl);
+  resultUrls.value[item.id] = item.originalUrl;
 }
 
 function onViewDetail(id: string): void {
@@ -298,25 +298,26 @@ function onViewDetail(id: string): void {
 
 function onDownloadSingle(item: BatchItem): void {
   if (!item.resultBlob) return;
-  const url = URL.createObjectURL(item.resultBlob);
+  // K29: 复用 getResultUrl 缓存的 ObjectURL，避免每次创建新 URL
+  const url = getResultUrl(item);
   const a = document.createElement('a');
   a.href = url;
   a.download = item.resultFilename || `removed_${item.file.name}`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // 不回收 URL，因为它在缓存中仍被使用
   emit('toast', { message: `已下载: ${item.file.name}`, type: 'success' });
 }
 
 async function onRetrySingle(id: string): Promise<void> {
-  retryingIds.value.add(id);
+  retryingIds.value[id] = true;
   try {
     await props.batch.retryItem(id);
   } catch {
     // retryItem 内部已处理错误
   } finally {
-    retryingIds.value.delete(id);
+    delete retryingIds.value[id];
   }
 }
 

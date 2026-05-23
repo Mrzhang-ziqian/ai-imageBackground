@@ -4,6 +4,7 @@ import { ALLOWED_TYPES, MAX_FILE_SIZE, BACKGROUND_TEMPLATES } from '@/types';
 import { uploadAndRemoveBg } from '@/services/api';
 import { renderWithTemplate } from './useTemplateRenderer';
 import { dataUrlToBlob } from './useBatchProcessor';
+import { useAuth } from './useAuth';
 
 /**
  * 图片背景移除核心逻辑 —— 组合式函数。
@@ -16,6 +17,7 @@ import { dataUrlToBlob } from './useBatchProcessor';
  * - 状态重置
  */
 export function useBackgroundRemover() {
+  const auth = useAuth();
   // ---- Reactive State ----
   const currentFile = shallowRef<File | null>(null);
   const originalUrl = ref<string>('');
@@ -132,6 +134,7 @@ export function useBackgroundRemover() {
           }
         },
         abortController.signal,
+        auth.token.value,  // K5: 从 Store 传入 token
       );
 
       stopProgressSimulation();
