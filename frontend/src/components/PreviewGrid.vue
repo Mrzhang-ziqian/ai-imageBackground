@@ -351,6 +351,16 @@ function onError(type: 'original' | 'result') {
   justify-content: center;
   overflow: hidden;
   transition: background-color 0.35s ease;
+  background-color: #fff;
+  /* 透明底棋盘格 (与 CompareSlider 一致) */
+  background-image:
+    linear-gradient(45deg, #e8e8e8 25%, transparent 25%),
+    linear-gradient(-45deg, #e8e8e8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e8e8e8 75%),
+    linear-gradient(-45deg, transparent 75%, #e8e8e8 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0, 0 8px, 8px -8px, -8px 0px;
 }
 
 .preview-box img {

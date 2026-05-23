@@ -120,6 +120,7 @@ const open = ref(false);
 const converting = ref(false);
 const copied = ref(false);
 const downloadDone = ref(false);
+const downloadDoneTimer = ref<ReturnType<typeof setTimeout> | null>(null);
 const dropdownRef = ref<HTMLElement | null>(null);
 
 // 是否有透明底可用
@@ -146,7 +147,13 @@ function onDocClick(e: MouseEvent) {
 }
 
 onMounted(() => document.addEventListener('click', onDocClick));
-onUnmounted(() => document.removeEventListener('click', onDocClick));
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick);
+  if (downloadDoneTimer.value !== null) {
+    clearTimeout(downloadDoneTimer.value);
+    downloadDoneTimer.value = null;
+  }
+});
 
 // ---- Blob → 指定格式转换 ----
 function blobToFormat(
@@ -201,10 +208,14 @@ function triggerDownload(blob: Blob, name: string) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  // 下载成功动画
+  // 下载成功动画（清理上次的定时器）
+  if (downloadDoneTimer.value !== null) {
+    clearTimeout(downloadDoneTimer.value);
+  }
   downloadDone.value = true;
-  setTimeout(() => {
+  downloadDoneTimer.value = setTimeout(() => {
     downloadDone.value = false;
+    downloadDoneTimer.value = null;
   }, 1500);
 }
 

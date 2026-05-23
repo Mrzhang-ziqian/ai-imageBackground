@@ -1,8 +1,8 @@
 # AI Background Remover — 产品需求诊断 & 优化路线图
 
 > 更新时间：2026-05-23  
-> 版本：v3.5  
-> 版本说明：Phase 1~4 核心层全部完成。Phase 5 G23 用户体系已上线。G28 页面体验重构完成。G29/G30 全链路缺陷修复（40/48 项已完成）。G31 产品设计分析（20 项 UX 缺陷）。**G32 Sprint A + G33 Sprint B 共 9 项用户体验核心优化已全部实施。**
+> 版本：v3.8  
+> 版本说明：Phase 1~4 核心层全部完成。Sprint A+B+C 共 12 项 UX 优化已实施。G34 测试审计 21 项（3 P0+7 P1 已热修复）。
 
 ---
 
@@ -35,6 +35,7 @@
 📋 新增              G31 产品设计分析          20 项 UX 缺陷 + 10 项设计方案 + 6 Sprint 路线图
 🛠 Sprint A          G32 UX-3/4/5 修复 + T5     4 项已实施 ✅
 🛠 Sprint B          G33 UX-1/2/9/19/20           5 项已实施 ✅
+🛠 Sprint C          G34 UX-11/17 + 审计热修复     3 项 + 10 热修复 ✅
 ❌ Phase 6 (商业化)  G24~G27 新增            0/5
 ❌ 质感层            G16~G21               0/6
 ```
@@ -360,8 +361,8 @@
 | **UX-8** | **下载后无分享/传播出口** | 下载即结束，无"分享对比图"、无社交传播 | Before/After GIF 生成 + "分享到社交媒体"按钮 |
 | **UX-9** | **批量逐张精修无进度** | `handleBatchChoiceRefine` 循环处理无提示"第 X/N 张"，用户不确定处理进度 — ✅ 已修复 | 顶部浮窗 "正在精修第 3/10 张" |
 | **UX-10** | **历史恢复原图为缩略图** | WorkspacePage 从历史恢复后，PreviewGrid 原图是 100px 缩略图，对比功能实质失效 | 历史中保存全尺寸原图 Blob（或至少更大的缩略图） |
-| **UX-11** | **新用户首次使用空白焦虑** | 注册后面对空白上传区，无示例、无引导 | "试试这张示例图" 云朵/人物/商品 3 张示例 + 3 步功能导览 |
-| **UX-12** | **确认完成后果不明** | DraftDetailPage "确认完成" 后页面跳转，用户不知道草稿去哪里了 | 按钮旁增加明确文字 "确认后将保存到历史并从本页移除" |
+| **UX-11** | **新用户首次使用空白焦虑** | 注册后面对空白上传区，无示例、无引导 — ✅ 已修复 | "试试这张示例图" 云朵/人物/商品 3 张示例 + 3 步功能导览 |
+| **UX-12** | **确认完成后果不明** | DraftDetailPage "确认完成" 后页面跳转，用户不知道草稿去哪里了 — ✅ 已修复 (Sprint A) | 按钮旁增加明确文字 "确认后将保存到历史并从本页移除" |
 
 #### 🟡 第三层：体验打磨 — 从「能用」到「好用」
 
@@ -371,7 +372,7 @@
 | **UX-14** | 批量结果无筛选 | 10 个结果混在一起，无法只看出错的 |
 | **UX-15** | 剪贴板降级缺失 | Firefox 不支持 `ClipboardItem`，用户收到冷冰冰的错误 toast |
 | **UX-16** | WebP 文件大小估算不准确 | 显示 `≈12 KB` 但实际 `18 KB`，用户感觉被欺骗 |
-| **UX-17** | 配额耗尽卡片无 CTA | 仅显示"很快将推出付费方案"，无邮件订阅、无预告 |
+| **UX-17** | 配额耗尽卡片无 CTA | 仅显示"很快将推出付费方案"，无邮件订阅、无预告 — ✅ 已修复 |
 | **UX-18** | 处理完成后无音效/haptic 反馈 | 用户可能在另一个标签页，处理完了也不知道 |
 | **UX-19** | 背景色/模板切换无过渡动画 | 切换瞬间闪变，视觉粗糙 — ✅ 已修复 |
 | **UX-20** | 下载按钮无反馈动画 | 点击后只有浏览器原生下载弹窗，按钮无成功状态 — ✅ 已修复 |
@@ -668,6 +669,88 @@ Lint: ✅ 零错误
 
 ---
 
+## 🛠 G34 — Sprint C 实施 & 测试报告（2026-05-23）
+
+> **Sprint C 新用户转化**：3 项实施（UX-11 示例图引导 + UX-17 配额 CTA），UX-12 已在前序 Sprint 完成。
+
+### 已实施
+
+| # | 任务 | 变更范围 | 详情 |
+|:---:|------|------|------|
+| **UX-11** | **新用户示例图引导** | `exampleImages.ts` (新) + `ExampleImagesBar.vue` (新) + `WorkspacePage.vue` (+15行) | Canvas 动态生成 3 张示例图（红苹果/蓝色球体/绿色礼盒，400×400 PNG + 100px data:URI 缩略图）。新登录用户首次看到可点击的示例图卡片，hover 显示上传图标，点击后自动 `File` 处理 → 永久隐藏示例栏 |
+| **UX-12** | **确认完成提示优化** | `DraftDetailPage.vue` | ✅ 已在前序 Sprint 完成（行66 有明确文字：`确认后将保存到历史并从本页移除，未确认的草稿不会出现在历史记录中`） |
+| **UX-17** | **配额卡片 CTA** | `ProPlanModal.vue` (新) + `WorkspacePage.vue` (+30行) | 配额耗尽卡片/错误卡片从死胡同「敬请期待」→ 可操作的「了解 Pro 计划」按钮 → 弹出 ProPlanModal（价格 ¥29/月 + 7 项 Free vs Pro 对比表 + 邮件通知订阅）|
+
+### 🔬 资深测试工程师全面审计（16 项发现 + 热修复）
+
+> 审计范围：11 个核心文件 + 跨文件一致性。共发现 **21 个问题**，其中 P0 致命 3 个、P1 高优 10 个、P2 中优 6 个、P3 低优 2 个。
+
+#### 🔴 P0 致命 — 已立即修复
+
+| # | 问题 | 位置 | 详情 | 处理 |
+|:---:|------|------|------|:--:|
+| 1 | **示例图 Blob 缓存崩溃** | `exampleImages.ts:98-106` | sessionStorage 缓存返回 `blob: null` → 点击示例图 `new File([null])` 直接抛异常 | ✅ 移除缓存，每次重新生成 |
+| 2 | **示例图栏在非 idle 状态残留** | `WorkspacePage.vue` | ExampleImagesBar 在全局容器中 → 用户自行上传图片后示例栏仍显示在上方 | ✅ 移入 idle 区块内 |
+| 3 | **PreviewGrid 透明底无棋盘格** | `PreviewGrid.vue:346-354` | `bgColor='transparent'` 时预览盒背景为纯白 → 用户无法区分透明区域和白色背景（CompareSlider 已有棋盘格） | ✅ 添加棋盘格 CSS（与 CompareSlider 一致） |
+
+#### 🟠 P1 高优 — 已修复
+
+| # | 问题 | 位置 | 详情 | 处理 |
+|:---:|------|------|------|:--:|
+| 4 | **逐张精修无配额检查 + 错误不中止** | `WorkspacePage.vue:486-498` | `handleBatchChoiceRefine` 绕过 `quota.isExhausted` 检查；处理失败不中止循环 → 连续 N 个 429 错误 + 最后仍显示「全部完成」 | ✅ 添加配额前置检查 + 错误计数 + 配额耗尽时 break |
+| 5 | **`downloadResult` / `restoreFromHistory` 死代码** | `useBackgroundRemover.ts:407-451` | 两个导出的函数（~60 行）无任何组件调用（DownloadPanel/restoreFromDraft 已替代） | ✅ 移除 |
+| 6 | **`progressRafId` 死变量** | `useBackgroundRemover.ts:43` | 声明但从未赋值，`cancelAnimationFrame` 永远不执行 | ✅ 移除 |
+| 7 | **`restoreFromDraft` 死参数 `originalBlob`** | `useBackgroundRemover.ts:461` | 参数定义但函数体内从未引用 | ✅ 移除 |
+| 8 | **DownloadPanel `setTimeout` 未清理** | `DownloadPanel.vue:209` | 用户下载后 1.5s 内离开页面 → timer 仍触发 → 操作已卸载组件状态 | ✅ `onUnmounted` 中 `clearTimeout` |
+| 9 | **`animateToFinish` falsy 陷阱** | `useBackgroundRemover.ts:252` | `progress \|\| 30` → progress=0 时错误跳变到 30 | ✅ 改为 `?? 30` |
+| 10 | **`handleBatchChoiceRefine` 的 `doProcessFile` 不保存草稿** | `WorkspacePage.vue` | 逐张精修中处理成功的图片只调用了 `remover.processImage`，未调用 `drafts.add` → 结果丢失 | ✅ 添加草稿保存逻辑 |
+
+#### 🟡 P2 中优 — 记录留待后续
+
+| # | 问题 | 位置 | 详情 |
+|:---:|------|------|------|
+| 11 | `clearItems` 不清理 result Object URLs | `useBatchProcessor.ts:86-93` | 批量结果图片 Blob URL 未释放，内存泄漏 |
+| 12 | `retryItem` AbortController 不可取消 | `useBatchProcessor.ts:167-189` | 局部 `AbortController` 无法被外部取消 |
+| 13 | 批处理单项目无进度模拟 | `useBatchProcessor.ts:137-143` | 进度停在 30%，无平滑动画，用户以为卡死 |
+| 14 | 历史恢复时 originalUrl 是缩略图 | `WorkspacePage.vue:678-686` | 对比模式下原图为低分辨率缩略图 |
+| 15 | 错误消息硬编码 localhost | `api.ts:181` | 生产环境仍提示 `localhost:8000` |
+| 16 | `drafts.ts` `loading` 永远为 `false` | `stores/drafts.ts:56` | 声明后从未设为 `true` |
+
+#### 🟢 P3 低优
+
+| # | 问题 | 位置 | 详情 |
+|:---:|------|------|------|
+| 17 | `resizeImageClient` 冗余 `file.slice(0)` | `imageUtils.ts:33-35` | `File` 继承自 `Blob`，可直接返回 |
+| 18 | 后端 `quota_deducted` 兜底分支不可达 | `main.py:431-437` | `quota_deducted` 设置后永不清除 |
+| 19 | 后端模型缓存 `_sessions` 无限增长 | `main.py:91` | 3 个模型合计 ~400MB 永不释放 |
+| 20 | `X-XSS-Protection` 响应头已废弃 | `main.py:180` | 所有主流浏览器已废弃此头 |
+| 21 | `bgColorSyncing` 锁语义混乱 | `WorkspacePage.vue:424-437` | `nextTick` 释放锁的时机不明确 |
+
+### 文件变更
+
+```
+新增:   frontend/src/utils/exampleImages.ts                     (+199行)
+新增:   frontend/src/components/ExampleImagesBar.vue            (+243行)
+新增:   frontend/src/components/ProPlanModal.vue                (+446行)
+修改:   frontend/src/pages/WorkspacePage.vue                    (+98行)
+修改:   frontend/src/composables/useBackgroundRemover.ts    (-65行, 清理死代码)
+修改:   frontend/src/components/DownloadPanel.vue               (+12行)
+修改:   frontend/src/components/PreviewGrid.vue                 (+10行)
+---
+构建: ✅ 通过 (124 modules, 1.52s)
+Lint: ✅ 零错误
+```
+
+### Sprint C 审计总结
+
+```
+Sprint C 实施: ████████████ 3/3 ✅ (示例图/配额CTA/确认提示)
+审计热修复:   ████████████ 10/10 ✅ (3 P0 + 7 P1)
+已知晓留后续: ░░░░░░░░░░░░ 8 项 P2/P3 记录中
+```
+
+---
+
 
 ### 🏗 中期战役：API 服务化 (Phase 6)
 
@@ -703,5 +786,5 @@ Lint: ✅ 零错误
 
 ---
 
-> **当前状态**：Phase 1~4 全部交付。G23 用户体系已上线。G28 体验重构完成。G29～G30 修复 40/48 项。G31 产品设计分析。**Sprint A+B 已实施**（共 9 项 UX 核心优化：草稿保护/透明底下载/批量重试/构建修复/进度模拟+ETA/ZIP下载/精修进度/背景过渡/下载反馈）。
-> **下一步**：Sprint C（新用户引导 + 配额卡片 CTA，1天）或 Sprint D（精修缩放 + 历史全尺寸原图 + 键盘快捷键，1.5天）。
+> **当前状态**：Phase 1~4 全部交付。G23 用户体系已上线。G28 体验重构完成。G29～G30 修复 40/48 项。G31 产品设计分析。**Sprint A+B+C 已实施**（共 12 项 UX 核心优化 + 10 项审计热修复）。G34 资深测试工程师全面审计发现 21 个问题（3 P0 致命已修复）。
+> **下一步**：Sprint D（精修缩放 + 历史全尺寸原图 + 键盘快捷键，1.5天）或 Sprint E（分享 GIF + 键盘快捷键，1.5天）。

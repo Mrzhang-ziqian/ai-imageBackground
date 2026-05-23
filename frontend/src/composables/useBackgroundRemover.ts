@@ -40,7 +40,6 @@ export function useBackgroundRemover() {
 
   /** 处理阶段模拟进度定时器 */
   let progressAnimTimer: ReturnType<typeof setInterval> | null = null;
-  let progressRafId: number | null = null;
 
   /** 边缘编辑前的透明 Blob 快照（用于撤销边缘修改） */
   let preEditTransparentBlob: Blob | null = null;
@@ -205,10 +204,6 @@ export function useBackgroundRemover() {
       clearInterval(progressAnimTimer);
       progressAnimTimer = null;
     }
-    if (progressRafId !== null) {
-      cancelAnimationFrame(progressRafId);
-      progressRafId = null;
-    }
   }
 
   /** 更新预计剩余时间 */
@@ -245,11 +240,10 @@ export function useBackgroundRemover() {
 
   /**
    * API 返回结果后，将进度平滑过渡到 100%。
-   * 不再做长时间模拟 —— 因为服务端已返回数据，没有必要阻塞 UI。
    */
   function animateToFinish(): Promise<void> {
     return new Promise((resolve) => {
-      let p = processing.progress || 30;
+      let p = processing.progress ?? 30;
       const timer = setInterval(() => {
         p += (100 - p) * 0.35;
         if (p >= 99.5) {
@@ -404,52 +398,6 @@ export function useBackgroundRemover() {
 
   // ---- Download ----
 
-  function downloadResult(): void {
-    const blob = resultBlob.value;
-    if (!blob) return;
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = resultFilename.value;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  /**
-   * 从历史记录恢复：直接用 data URL 设置结果，跳过上传/处理流程。
-   */
-  function restoreFromHistory(params: {
-    originalDataUrl: string;
-    resultDataUrl: string;
-    filename: string;
-    dimensions: ImageDimensions;
-    modelUsed: string;
-  }): void {
-    abortCurrent();
-    revokeAllUrls();
-
-    const resultBlobData = dataUrlToBlob(params.resultDataUrl);
-    transparentBlob.value = resultBlobData;
-    resultBlob.value = resultBlobData;
-    resultUrl.value = URL.createObjectURL(resultBlobData);
-    originalUrl.value = params.originalDataUrl;
-    resultFilename.value = params.filename;
-    resultDimensions.value = params.dimensions;
-    modelUsed.value = params.modelUsed;
-    currentBgColor.value = 'transparent';
-    currentTemplateId.value = null;
-
-    Object.assign(processing, {
-      status: 'done' as const,
-      progress: 100,
-      message: '已恢复',
-      detail: '',
-    });
-  }
-
   /**
    * 从草稿箱恢复：直接注入已有的 Object URLs 和 Blobs。
    * 此方法不使用 revokeAllUrls，因为 URLs 由调用方管理生命周期。
@@ -458,7 +406,6 @@ export function useBackgroundRemover() {
     resultUrl: string;
     resultBlob: Blob;
     originalUrl: string;
-    originalBlob?: Blob;
     filename: string;
     dimensions: ImageDimensions;
     modelUsed: string;
@@ -553,7 +500,6 @@ export function useBackgroundRemover() {
     validateFile,
     processImage,
     retryCurrentFile,
-    restoreFromHistory,
     restoreFromDraft,
     reset,
     abortCurrent,

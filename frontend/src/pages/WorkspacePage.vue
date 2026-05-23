@@ -79,6 +79,11 @@
           <Transition name="section-fade" mode="out-in">
             <!-- IDLE：上传区 -->
             <div v-if="viewState === 'idle'" key="idle">
+              <!-- 示例图引导（新用户） -->
+              <ExampleImagesBar
+                v-if="showExamples"
+                @select="handleExampleSelect"
+              />
               <UploadZone
                 v-if="!quota.isExhausted.value"
                 :validate-file="remover.validateFile"
@@ -99,7 +104,14 @@
                 <p class="quota-exhausted-desc">
                   免费版每日 {{ quota.quotaDaily.value }} 次已用完，明天自动重置。
                 </p>
-                <p class="quota-exhausted-tip">Pro 计划即将上线，敬请期待</p>
+                <div class="quota-exhausted-actions">
+                  <button class="btn-upgrade-pro" @click="showProModal = true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                    </svg>
+                    了解 Pro 计划
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -185,7 +197,12 @@
                 </div>
                 <div class="error-actions">
                   <template v-if="isQuotaError">
-                    <p class="quota-error-tip">Pro 计划即将上线，敬请期待</p>
+                    <button class="btn-upgrade-pro-inline" @click="showProModal = true">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                      </svg>
+                      了解 Pro 计划，解除限制
+                    </button>
                     <button class="btn-new-upload" @click="doReset">
                       返回上传
                     </button>
@@ -265,6 +282,7 @@
     />
 
     <AuthModal :visible="ui.authModalVisible" @close="ui.closeAuthModal()" />
+    <ProPlanModal :visible="showProModal" @close="showProModal = false" />
   </div>
 </template>
 
@@ -283,6 +301,8 @@ import LargeImageDialog from '@/components/LargeImageDialog.vue';
 import AuthModal from '@/components/AuthModal.vue';
 import BackgroundColorPicker from '@/components/BackgroundColorPicker.vue';
 import DownloadPanel from '@/components/DownloadPanel.vue';
+import ExampleImagesBar from '@/components/ExampleImagesBar.vue';
+import ProPlanModal from '@/components/ProPlanModal.vue';
 import { useBackgroundRemover } from '@/composables/useBackgroundRemover';
 import { useHistory } from '@/composables/useHistory';
 import { useBatchProcessor } from '@/composables/useBatchProcessor';
@@ -313,7 +333,12 @@ const historyCollapsed = ref(false);
 
 // ---- 新用户引导 ----
 const ONBOARDING_KEY = 'ai-bg-remover-onboarding-shown';
+const EXAMPLES_KEY = 'ai-bg-remover-examples-used';
 const showOnboarding = ref(false);
+const showExamples = ref(false);
+
+// ---- Pro 弹窗 ----
+const showProModal = ref(false);
 
 // ---- 配额文案 ----
 const quotaText = computed(() => {
@@ -334,12 +359,16 @@ const batchChoiceVisible = ref(false);
 const batchChoiceFiles = ref<File[]>([]);
 const batchChoiceCount = computed(() => batchChoiceFiles.value.length);
 
-// ---- 首次挂载：引导 + 历史加载（合并为单个 onMounted） ----
+// ---- 首次挂载：引导 + 示例图 + 历史加载 ----
 onMounted(async () => {
-  // 新用户引导
+  // 新用户引导横幅
   if (!localStorage.getItem(ONBOARDING_KEY) && auth.isLoggedIn.value) {
     showOnboarding.value = true;
     localStorage.setItem(ONBOARDING_KEY, '1');
+  }
+  // 示例图（仅首次登录用户可见，用过一次后永久隐藏）
+  if (!localStorage.getItem(EXAMPLES_KEY) && auth.isLoggedIn.value) {
+    showExamples.value = true;
   }
   // 草稿箱初始化
   drafts.init();
@@ -458,14 +487,47 @@ async function handleBatchChoiceRefine(): void {
   batchChoiceVisible.value = false;
   const files = batchChoiceFiles.value;
   if (files.length === 0) return;
+  if (quota.isExhausted.value) {
+    ui.showToast({ message: `今日免费额度已用完 (${quota.quotaUsed.value}/${quota.quotaDaily.value})，明天自动重置`, type: 'error' });
+    return;
+  }
   ui.showToast({ message: `开始逐张处理 ${files.length} 张图片`, type: 'success' });
   let idx = 0;
+  let errorCount = 0;
+  const total = files.length;
   for (const file of files) {
     idx++;
-    ui.showToast({ message: `正在处理第 ${idx}/${files.length} 张`, type: 'success' });
-    await doProcessFile(file);
+    ui.showToast({ message: `正在处理第 ${idx}/${total} 张`, type: 'success' });
+    const error = await remover.processImage(file);
+    if (error) {
+      errorCount++;
+      ui.showToast({ message: `第 ${idx}/${total} 张处理失败: ${humanizeError(error)}`, type: 'error' });
+      // 配额耗尽时中止后续
+      if (remover.processing.status === 'error' && /已用完/.test(remover.processing.detail)) {
+        ui.showToast({ message: `额度用完，已处理 ${idx}/${total} 张，${errorCount} 张失败`, type: 'error' });
+        break;
+      }
+      continue;
+    }
+    if (remover.processing.status === 'done') {
+      const resultBlob = remover.resultBlob.value;
+      if (resultBlob) {
+        await quota.afterSuccessfulRequest();
+        const draftId = generateDraftId();
+        const thumbUrl = await createThumbnail(resultBlob, 100);
+        const origThumbUrl = await createThumbnail(file, 100);
+        await drafts.add({
+          id: draftId, filename: remover.resultFilename.value,
+          thumbnailUrl: origThumbUrl, resultThumbUrl: thumbUrl,
+          dimensions: remover.resultDimensions.value ?? { width: 0, height: 0 },
+          modelUsed: remover.modelUsed.value, createdAt: Date.now(),
+        }, resultBlob, file);
+      }
+    }
+    remover.reset();
   }
-  ui.showToast({ message: `${files.length} 张图片处理完成`, type: 'success' });
+  const doneCount = total - errorCount;
+  ui.showToast({ message: `${total} 张图片处理完成 (${doneCount} 张成功${errorCount > 0 ? `, ${errorCount} 张失败` : ''})`, type: errorCount > 0 ? 'error' : 'success' });
 }
 
 /** 关闭批量选择对话框 */
@@ -610,6 +672,19 @@ async function handleRetry(): Promise<void> {
 }
 
 function handleValidationError(error: string): void { ui.showToast({ message: humanizeError(error), type: 'error' }); }
+
+// ---- 新用户引导 ----
+function dismissOnboarding(): void {
+  showOnboarding.value = false;
+}
+
+/** 点击示例图 → 隐藏示例栏 + 直接处理 */
+async function handleExampleSelect(blob: Blob, filename: string): Promise<void> {
+  showExamples.value = false;
+  localStorage.setItem(EXAMPLES_KEY, '1');
+  const file = new File([blob], filename, { type: 'image/png' });
+  await handleFileSelected(file);
+}
 
 async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
   if (remover.processing.status !== 'idle') remover.reset();
@@ -807,6 +882,51 @@ async function onPaste(event: ClipboardEvent): Promise<void> {
 .quota-exhausted-title { font-size: 17px; font-weight: 700; color: #92400e; margin: 0; }
 .quota-exhausted-desc { font-size: 13px; color: #6b7280; margin: 0; line-height: 1.5; max-width: 360px; }
 .quota-exhausted-tip { font-size: 12px; color: #9ca3af; margin: 0; }
+.quota-exhausted-actions { display: flex; gap: 10px; margin-top: 4px; }
+
+.btn-upgrade-pro {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 3px 12px rgba(99, 102, 241, 0.35);
+}
+.btn-upgrade-pro:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.45);
+}
+.btn-upgrade-pro:active {
+  transform: translateY(0);
+}
+
+.btn-upgrade-pro-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+.btn-upgrade-pro-inline:hover {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
 
 /* ---- 批量返回 ---- */
 .back-row { margin-bottom: 16px; }
