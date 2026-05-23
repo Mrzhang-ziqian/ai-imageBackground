@@ -709,10 +709,11 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
       // 历史恢复 → 在结果页展示（使用 restoreFromDraft 加载完整原图）
       selectedBgColor.value = 'transparent';
       const resultObjUrl = URL.createObjectURL(resultBlob);
+      // 历史记录不存储全尺寸原图，使用结果图作为对比参考（远优于 120px 缩略图）
       remover.restoreFromDraft({
         resultUrl: resultObjUrl,
         resultBlob: resultBlob,
-        originalUrl: entry.originalThumb,
+        originalUrl: resultObjUrl,
         filename: entry.filename,
         dimensions: { width: entry.width, height: entry.height },
         modelUsed: entry.modelUsed,

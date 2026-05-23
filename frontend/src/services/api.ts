@@ -178,7 +178,7 @@ export function uploadAndRemoveBg(
     xhr.addEventListener('error', () => {
       // 如果因 abort 触发，忽略（abort handler 已 reject）
       if (signal?.aborted) return;
-      reject(new Error('无法连接到服务器，请确认后端已启动（http://localhost:8000）'));
+      reject(new Error('无法连接到服务器，请检查网络后重试'));
     });
 
     if (signal) {

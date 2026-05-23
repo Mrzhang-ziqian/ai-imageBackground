@@ -86,6 +86,7 @@ export function useBatchProcessor() {
   function clearItems(): void {
     for (const item of items) {
       if (item.originalUrl) URL.revokeObjectURL(item.originalUrl);
+      if (item.resultUrl) URL.revokeObjectURL(item.resultUrl);
     }
     items.length = 0;
     currentIndex.value = -1;

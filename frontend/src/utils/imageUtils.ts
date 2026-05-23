@@ -32,7 +32,7 @@ export async function resizeImageClient(file: File, maxDim: number = RECOMMENDED
   const dims = await readImageDimensions(file);
   if (!dims || Math.max(dims.width, dims.height) <= maxDim) {
     // 尺寸在范围内，返回原始文件内容
-    return file.slice(0) as Blob;
+    return file;
   }
 
   return new Promise((resolve, reject) => {

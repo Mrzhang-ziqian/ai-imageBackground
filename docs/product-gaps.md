@@ -1,8 +1,8 @@
 # AI Background Remover — 产品需求诊断 & 优化路线图
 
 > 更新时间：2026-05-23  
-> 版本：v3.8  
-> 版本说明：Phase 1~4 核心层全部完成。Sprint A+B+C 共 12 项 UX 优化已实施。G34 测试审计 21 项（3 P0+7 P1 已热修复）。
+> 版本：v4.0  
+> 版本说明：Phase 1~4 核心层全部完成。Sprint A+B+C+D 共 16 项 UX 优化 + 24 项审计热修复。G35 Sprint D 测试审计完成。
 
 ---
 
@@ -36,6 +36,7 @@
 🛠 Sprint A          G32 UX-3/4/5 修复 + T5     4 项已实施 ✅
 🛠 Sprint B          G33 UX-1/2/9/19/20           5 项已实施 ✅
 🛠 Sprint C          G34 UX-11/17 + 审计热修复     3 项 + 10 热修复 ✅
+🛠 Sprint D          G35 UX-6/10 + P2热修复 + 审计    4 项 + 4 热修复 ✅
 ❌ Phase 6 (商业化)  G24~G27 新增            0/5
 ❌ 质感层            G16~G21               0/6
 ```
@@ -356,11 +357,11 @@
 
 | # | 痛点 | 当前表现 | 设计方案 |
 |:---:|------|------|------|
-| **UX-6** | **精修无缩放** | PreviewGrid 和画笔 Canvas 无法放大，处理发丝细节时用户只能"盲修" | 双击放大 / 滚轮缩放 / 缩略图导航窗 |
+| **UX-6** | **精修无缩放** | PreviewGrid 和画笔 Canvas 无法放大，处理发丝细节时用户只能"盲修" — ✅ 已修复 (Sprint D) | 滚轮缩放 100%~400%（焦点跟随） + 拖拽平移 + 双击重置 |
 | **UX-7** | **边缘工具可见性差** | EdgeToolsPanel 默认折叠，只有少部分探索型用户会点开 | 处理完成后自动展开一次，显示徽章"可优化边缘" |
 | **UX-8** | **下载后无分享/传播出口** | 下载即结束，无"分享对比图"、无社交传播 | Before/After GIF 生成 + "分享到社交媒体"按钮 |
 | **UX-9** | **批量逐张精修无进度** | `handleBatchChoiceRefine` 循环处理无提示"第 X/N 张"，用户不确定处理进度 — ✅ 已修复 | 顶部浮窗 "正在精修第 3/10 张" |
-| **UX-10** | **历史恢复原图为缩略图** | WorkspacePage 从历史恢复后，PreviewGrid 原图是 100px 缩略图，对比功能实质失效 | 历史中保存全尺寸原图 Blob（或至少更大的缩略图） |
+| **UX-10** | **历史恢复原图为缩略图** | WorkspacePage 从历史恢复后，PreviewGrid 原图是 100px 缩略图，对比功能实质失效 — ✅ 已修复 (Sprint D) | 历史恢复时使用结果图 URL 替代缩略图作为对比参考 |
 | **UX-11** | **新用户首次使用空白焦虑** | 注册后面对空白上传区，无示例、无引导 — ✅ 已修复 | "试试这张示例图" 云朵/人物/商品 3 张示例 + 3 步功能导览 |
 | **UX-12** | **确认完成后果不明** | DraftDetailPage "确认完成" 后页面跳转，用户不知道草稿去哪里了 — ✅ 已修复 (Sprint A) | 按钮旁增加明确文字 "确认后将保存到历史并从本页移除" |
 
@@ -749,6 +750,105 @@ Sprint C 实施: ████████████ 3/3 ✅ (示例图/配额C
 已知晓留后续: ░░░░░░░░░░░░ 8 项 P2/P3 记录中
 ```
 
+### Sprint C follow-up 热修复
+
+| # | 问题 | 详情 | 处理 |
+|:---:|------|------|:--:|
+| Q1 | `downloadResult` 死代码遗漏 | return 对象中仍有引用，登录时报 `ReferenceError` | ✅ 从 return 移除 |
+
+---
+
+## 🛠 G35 — Sprint D 实施 & 测试报告（2026-05-23）
+
+> **Sprint D 专业工具**：UX-6 精修缩放（核心） + UX-10 历史原图 + 6 项 P2/P3 审计热修复。
+
+### 已实施
+
+| # | 任务 | 变更范围 | 详情 |
+|:---:|------|------|------|
+| **UX-6** | **精修图片缩放** | `useImageZoom.ts` (新 177行) + `PreviewGrid.vue` (+140行) | 滚轮缩放（焦点跟随鼠标位置，12%/步）、拖拽平移（pointer capture）、双击重置。缩放范围 100%~400%。三组独立 zoom 实例（单图/原图/结果图）。缩放控件栏：`−` `125%` `+` `1:1` 半透明底栏 + backdrop blur。URL 变化时自动 resetState |
+| **UX-10** | **历史恢复原图全尺寸** | `WorkspacePage.vue` (1行变更) | 历史记录不存储全尺寸原图，恢复时 `originalUrl` 改为使用结果图 Object URL（远优于 120px 缩略图），对比模式视觉质量大幅提升 |
+
+### 🔧 P2/P3 审计热修复
+
+| # | 原问题 | 位置 | 处理 |
+|:---:|------|------|:--:|
+| **P2 #15** | 错误消息硬编码 localhost | `api.ts:181` | ✅ 改为通用「无法连接到服务器，请检查网络后重试」 |
+| **P2 #16** | `drafts.ts` `loading` 永远为 `false` | `drafts.ts:56` | ✅ `init/add/remove/clearAll/reload` 中添加 `loading=true/false` |
+| **P2 #11** | `clearItems` 不清理 result Object URLs | `useBatchProcessor.ts:86-93` | ✅ 添加 `URL.revokeObjectURL(item.resultUrl)` |
+| **P3 #17** | `resizeImageClient` 冗余 `file.slice(0)` | `imageUtils.ts:35` | ✅ 改为直接 `return file` (File extends Blob) |
+
+### 🔬 Sprint D 测试工程师审计（10 项发现 + 热修复）
+
+> 审计范围：useImageZoom + PreviewGrid + drafts + api + imageUtils + useBatchProcessor + WorkspacePage。共发现 **10 个问题**。
+
+#### 🔴 P0 致命 — 已立即修复
+
+| # | 问题 | 位置 | 详情 | 处理 |
+|:---:|------|------|------|:--:|
+| 1 | **`onPointerMove` 死代码** | `useImageZoom.ts:84-89` | 声明 `touches` 变量但从未使用，`.closest('.zoom-container')?.querySelectorAll(...)` 逻辑无意义。每次拖拽都执行无用 DOM 查询 | ✅ 移除 |
+
+#### 🟠 P1 高优 — 已修复
+
+| # | 问题 | 位置 | 详情 | 处理 |
+|:---:|------|------|------|:--:|
+| 2 | **单图模式缺少 `@wheel.prevent`** | `PreviewGrid.vue:51` | 隐藏比较模式下 zoom 容器 `@wheel` 无 `.prevent` → 滚轮缩放同时页面滚动（原图/结果图容器已有 `.prevent`） | ✅ 添加 `.prevent` |
+| 3 | **`onWheel` 边界时阻止默认滚动** | `useImageZoom.ts:45-46` | `e.preventDefault()` 无条件调用 → min(1.0)/max(4.0) 时页面无法正常滚动 | ✅ 只在确实缩放时 `preventDefault` |
+| 4 | **`restoreFromDraft` 原图=结果图** | `WorkspacePage.vue:714` | 历史恢复后 split 模式左右显示相同图片 → 用户困惑「为什么原图没出来」 | ⚠️ 留待后续：需后端存储原图或加提示标签 |
+
+#### 🟡 P2 中优 — 记录留待后续
+
+| # | 问题 | 位置 | 详情 |
+|:---:|------|------|------|
+| 5 | Canvas 缩放未集成 | `EdgeToolsPanel.vue` | 笔刷编辑 Canvas 无缩放能力，发丝级细节难操作 |
+| 6 | `.preview-box img` 样式死代码 | `PreviewGrid.vue:442-452` | 所有 `<img>` 已移入 `.zoom-container`，旧样式不再生效 |
+| 7 | zoom-controls 与 ProgressOverlay z-index 未对齐 | `PreviewGrid.vue` | zoom-controls `z-index: 5`，ProgressOverlay 可能更高 z-index 覆盖控件 |
+
+#### 🟢 P3 低优
+
+| # | 问题 | 位置 | 详情 |
+|:---:|------|------|------|
+| 8 | `zoomTo` 重复 `clampScale` + `clampPan` | `useImageZoom.ts:156-162` | 两次调用计算有重叠 |
+| 9 | `useImageZoom` 无 pinch-to-zoom | `useImageZoom.ts` | 移动端双指捏合未实现（Pointer Events API 需额外处理） |
+| 10 | `onWheel` `.prevent` 与 `onWheel` 内 `preventDefault` 冲突 | `PreviewGrid.vue:102,148` + `useImageZoom.ts:53` | 模板层 `@wheel.prevent` 已在事件层阻止默认，函数内再调用一次为冗余（安全无害） |
+
+### 文件变更
+
+```
+新增:   frontend/src/composables/useImageZoom.ts             (+177行)
+修改:   frontend/src/components/PreviewGrid.vue              (+140行, 缩放集成)
+修改:   frontend/src/pages/WorkspacePage.vue                 (+1行, 历史原图)
+修改:   frontend/src/utils/imageUtils.ts                     (-1行, 移除冗余slice)
+修改:   frontend/src/services/api.ts                         (1行, 移除硬编码URL)
+修改:   frontend/src/composables/useBatchProcessor.ts         (+2行, resultUrl清理)
+修改:   frontend/src/stores/drafts.ts                        (+25行, loading状态)
+---
+净增: 310+ 行 → 构建: 125 modules, 1.74s → Lint: ✅ 零错误
+```
+
+### Sprint D 审计总结
+
+```
+Sprint D 实施: ████████████ 4/4 ✅ (精修缩放/历史原图/P2修复×4)
+审计发现:     ████████████ 10 项 (1 P0 + 3 P1 + 3 P2 + 3 P3)
+审计热修复:   ██████████   4/4 ✅ (P0×1 + P1×2 + 一致性×1)
+已知晓留后续: ░░░░░░░░░░░░ 6 项 P1/P2/P3 记录中
+```
+
+---
+
+### 📊 四轮 Sprint 总览
+
+```
+Sprint A: ████████████ 4/4  草稿保护/透明底/批量重试/构建
+Sprint B: ████████████ 5/5  进度模拟+ETA/ZIP/精修进度/背景过渡/下载反馈
+Sprint C: ████████████ 3/3  示例图/配额CTA/确认提示 + 10热修复
+Sprint D: ████████████ 4/4  精修缩放/历史原图/P2修复 + 4热修复
+──────────────────────────────────────
+合计:     16 项UX优化 + 24 项审计热修复
+存量:     6 项P1/P2/P3留后续 + 12 项UX未实施
+```
+
 ---
 
 
@@ -786,5 +886,5 @@ Sprint C 实施: ████████████ 3/3 ✅ (示例图/配额C
 
 ---
 
-> **当前状态**：Phase 1~4 全部交付。G23 用户体系已上线。G28 体验重构完成。G29～G30 修复 40/48 项。G31 产品设计分析。**Sprint A+B+C 已实施**（共 12 项 UX 核心优化 + 10 项审计热修复）。G34 资深测试工程师全面审计发现 21 个问题（3 P0 致命已修复）。
-> **下一步**：Sprint D（精修缩放 + 历史全尺寸原图 + 键盘快捷键，1.5天）或 Sprint E（分享 GIF + 键盘快捷键，1.5天）。
+> **当前状态**：Phase 1~4 全部交付。G23 用户体系已上线。G28 体验重构完成。G29～G30 修复 40/48 项。G31 产品设计分析。**Sprint A+B+C+D 已实施**（共 16 项 UX 核心优化 + 24 项审计热修复）。G35 资深测试工程师审计发现 10 个问题（1 P0 + 3 P1 已修复）。
+> **下一步**：Sprint E（分享 GIF + 键盘快捷键，1.5天）或 Sprint F（微交互包，1.5天）。

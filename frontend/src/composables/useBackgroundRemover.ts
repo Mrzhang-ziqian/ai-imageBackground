@@ -507,6 +507,5 @@ export function useBackgroundRemover() {
     applyTemplate,
     updateTransparentBlob,
     resetEdgeEdits,
-    downloadResult,
   };
 }

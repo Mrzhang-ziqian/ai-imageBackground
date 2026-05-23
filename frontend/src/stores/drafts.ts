@@ -62,27 +62,42 @@ export const useDraftsStore = defineStore('drafts', () => {
 
   /** 初始化：从 IndexedDB 加载元数据 */
   async function init(): Promise<void> {
-    items.value = await loadMeta();
+    loading.value = true;
+    try {
+      items.value = await loadMeta();
+    } finally {
+      loading.value = false;
+    }
   }
 
   /** 添加一个草稿，同时存储结果 Blob 和原图 Blob */
   async function add(draft: Draft, resultBlob: Blob, originalBlob?: Blob): Promise<void> {
-    await Promise.all([
-      idbSet(idbResultKey(draft.id), resultBlob),
-      originalBlob ? idbSet(idbOriginalKey(draft.id), originalBlob) : Promise.resolve(),
-    ]);
-    items.value.unshift(draft);
-    await saveMeta(items.value);
+    loading.value = true;
+    try {
+      await Promise.all([
+        idbSet(idbResultKey(draft.id), resultBlob),
+        originalBlob ? idbSet(idbOriginalKey(draft.id), originalBlob) : Promise.resolve(),
+      ]);
+      items.value.unshift(draft);
+      await saveMeta(items.value);
+    } finally {
+      loading.value = false;
+    }
   }
 
   /** 删除一个草稿（含 IndexedDB 中的 Blob） */
   async function remove(id: string): Promise<void> {
-    await Promise.all([
-      idbDel(idbResultKey(id)),
-      idbDel(idbOriginalKey(id)),
-    ]);
-    items.value = items.value.filter((d) => d.id !== id);
-    await saveMeta(items.value);
+    loading.value = true;
+    try {
+      await Promise.all([
+        idbDel(idbResultKey(id)),
+        idbDel(idbOriginalKey(id)),
+      ]);
+      items.value = items.value.filter((d) => d.id !== id);
+      await saveMeta(items.value);
+    } finally {
+      loading.value = false;
+    }
   }
 
   /** 获取草稿的结果 Blob */
@@ -110,19 +125,29 @@ export const useDraftsStore = defineStore('drafts', () => {
 
   /** 清空所有草稿 */
   async function clearAll(): Promise<void> {
-    const allKeys = (await idbKeys()).filter(
-      (k) => typeof k === 'string' &&
-        ((k as string).startsWith('draft:result:') ||
-         (k as string).startsWith('draft:original:') ||
-         (k as string) === 'drafts:meta'),
-    );
-    await Promise.all(allKeys.map((k) => idbDel(k)));
-    items.value = [];
+    loading.value = true;
+    try {
+      const allKeys = (await idbKeys()).filter(
+        (k) => typeof k === 'string' &&
+          ((k as string).startsWith('draft:result:') ||
+           (k as string).startsWith('draft:original:') ||
+           (k as string) === 'drafts:meta'),
+      );
+      await Promise.all(allKeys.map((k) => idbDel(k)));
+      items.value = [];
+    } finally {
+      loading.value = false;
+    }
   }
 
   /** 从 IndexedDB 重新加载 */
   async function reload(): Promise<void> {
-    items.value = await loadMeta();
+    loading.value = true;
+    try {
+      items.value = await loadMeta();
+    } finally {
+      loading.value = false;
+    }
   }
 
   return {
