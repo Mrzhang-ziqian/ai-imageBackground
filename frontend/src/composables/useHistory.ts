@@ -15,7 +15,7 @@ import { useAuth } from './useAuth';
  * 登出时自动清空本地数据。
  */
 export function useHistory() {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, token } = useAuth();
   const entries = ref<HistoryEntry[]>([]);
   const loading = ref(false);
   const loaded = ref(false);
@@ -24,7 +24,7 @@ export function useHistory() {
   async function load(): Promise<void> {
     loading.value = true;
     try {
-      entries.value = await historyApi.list();
+      entries.value = await historyApi.list(token.value);
       loaded.value = true;
     } catch {
       entries.value = [];
@@ -38,7 +38,7 @@ export function useHistory() {
   async function remove(id: number): Promise<void> {
     // K12: 乐观更新 → 先调 API，成功后再更新 UI（防止静默失败导致 UI 与后端不一致）
     try {
-      await historyApi.remove(id);
+      await historyApi.remove(id, token.value);
       entries.value = entries.value.filter(e => e.id !== id);
     } catch {
       // 静默失败（API 失败时 UI 不变，用户可重试）
@@ -49,7 +49,7 @@ export function useHistory() {
   async function clearAll(): Promise<void> {
     // K12: 同上
     try {
-      await historyApi.clearAll();
+      await historyApi.clearAll(token.value);
       entries.value = [];
     } catch {
       // 静默失败

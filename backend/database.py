@@ -57,7 +57,11 @@ async def init_db() -> None:
     for seed in SEED_USERS:
         env_key = f"SEED_{seed['username'].upper()}_PASSWORD"
         if os.environ.get(env_key) is None:
-            logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 {env_key} 环境变量")
+            # N5: 直接使用 email 查找对应种子用户的环境变量（避免 username → env_key 映射错误）
+            if seed['email'] == 'admin@admin.com' and not os.environ.get('SEED_ADMIN_PASSWORD'):
+                logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 SEED_ADMIN_PASSWORD 环境变量")
+            elif seed['email'] == 'test@test.com' and not os.environ.get('SEED_TEST_PASSWORD'):
+                logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 SEED_TEST_PASSWORD 环境变量")
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

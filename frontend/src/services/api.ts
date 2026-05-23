@@ -197,16 +197,11 @@ export function uploadAndRemoveBg(
 
 // ============ History API ============
 
-function getToken(): string | null {
-  return localStorage.getItem('auth_token');
-}
-
-async function historyFetch(url: string, options: RequestInit = {}): Promise<any> {
-  const token = getToken();
+async function historyFetch(url: string, authToken: string | null, options: RequestInit = {}): Promise<Response> {
   const res = await fetch(url, {
     ...options,
     headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...options.headers,
     },
   });
@@ -229,24 +224,28 @@ async function historyFetch(url: string, options: RequestInit = {}): Promise<any
 
 export const historyApi = {
   /** 获取当前用户的历史记录列表 */
-  async list(): Promise<HistoryEntry[]> {
-    const res = await historyFetch(`${API_BASE}/history`);
+  async list(authToken?: string | null): Promise<HistoryEntry[]> {
+    const token = authToken ?? localStorage.getItem('auth_token');
+    const res = await historyFetch(`${API_BASE}/history`, token);
     return res.json();
   },
 
   /** 获取历史记录的结果原图（返回 Blob） */
-  async getResult(historyId: number): Promise<Blob> {
-    const res = await historyFetch(`${API_BASE}/history/${historyId}/result`);
+  async getResult(historyId: number, authToken?: string | null): Promise<Blob> {
+    const token = authToken ?? localStorage.getItem('auth_token');
+    const res = await historyFetch(`${API_BASE}/history/${historyId}/result`, token);
     return res.blob();
   },
 
   /** 删除单条历史记录 */
-  async remove(historyId: number): Promise<void> {
-    await historyFetch(`${API_BASE}/history/${historyId}`, { method: 'DELETE' });
+  async remove(historyId: number, authToken?: string | null): Promise<void> {
+    const token = authToken ?? localStorage.getItem('auth_token');
+    await historyFetch(`${API_BASE}/history/${historyId}`, token, { method: 'DELETE' });
   },
 
   /** 清空当前用户全部历史记录 */
-  async clearAll(): Promise<void> {
-    await historyFetch(`${API_BASE}/history`, { method: 'DELETE' });
+  async clearAll(authToken?: string | null): Promise<void> {
+    const token = authToken ?? localStorage.getItem('auth_token');
+    await historyFetch(`${API_BASE}/history`, token, { method: 'DELETE' });
   },
 };

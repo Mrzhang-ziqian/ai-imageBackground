@@ -685,7 +685,7 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
   }
   try {
     ui.showToast({ message: '正在加载历史记录...', type: 'success' });
-    const resultBlob = await historyApi.getResult(entry.id);
+    const resultBlob = await historyApi.getResult(entry.id, auth.token.value);
     if (!resultBlob || resultBlob.size === 0) { ui.showToast({ message: '历史记录文件已丢失，请重新上传', type: 'error' }); return; }
     const resultThumbUrl = await createThumbnail(resultBlob, 120);
     const draftId = generateDraftId();

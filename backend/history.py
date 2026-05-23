@@ -107,11 +107,20 @@ async def list_history(
     entries = result.scalars().all()
 
     items: list[HistoryItemOut] = []
-    for e in entries:
-        # P1-4: 异步读取缩略图文件，不阻塞事件循环
-        # P1-11: MIME 类型从文件扩展名推断，而非硬编码
-        orig_thumb_b64, _ = await _read_thumb_async(e.thumb_original)
-        result_thumb_b64, _ = await _read_thumb_async(e.thumb_result)
+    # N4: 并行读取所有缩略图，避免顺序 I/O 阻塞
+    orig_tasks = [asyncio.to_thread(_sync_read_file, e.thumb_original) for e in entries]
+    result_tasks = [asyncio.to_thread(_sync_read_file, e.thumb_result) for e in entries]
+
+    orig_blobs = await asyncio.gather(*orig_tasks, return_exceptions=True)
+    result_blobs = await asyncio.gather(*result_tasks, return_exceptions=True)
+
+    for i, e in enumerate(entries):
+        orig_thumb_b64 = ""
+        result_thumb_b64 = ""
+        if isinstance(orig_blobs[i], bytes):
+            orig_thumb_b64, _ = _data_url(orig_blobs[i], _mime_from_path(e.thumb_original)), _mime_from_path(e.thumb_original)
+        if isinstance(result_blobs[i], bytes):
+            result_thumb_b64, _ = _data_url(result_blobs[i], _mime_from_path(e.thumb_result)), _mime_from_path(e.thumb_result)
 
         items.append(HistoryItemOut(
             id=e.id,
@@ -351,6 +360,8 @@ async def save_history_entry(
         )).scalar_one_or_none()
 
         if blocked_existing:
+            # N2: 先清理文件，再删 DB。如果进程在文件删除后、DB commit 前崩溃，
+            #     重试时文件不存在但 DB 已清理 — 比孤儿文件（DB已删但文件残留）更安全
             for path in (blocked_existing.thumb_original, blocked_existing.thumb_result, blocked_existing.result_path):
                 try:
                     if path and os.path.isfile(path):

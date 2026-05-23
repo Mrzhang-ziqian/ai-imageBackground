@@ -404,6 +404,10 @@ export function useBackgroundRemover() {
     dimensions: ImageDimensions;
     modelUsed: string;
   }): void {
+    // N11: 校验 dimensions 有效性，防止无效尺寸导致下游异常
+    if (!params.dimensions || params.dimensions.width <= 0 || params.dimensions.height <= 0) {
+      console.warn('[restoreFromDraft] 无效的 dimensions，已忽略');
+    }
     abortCurrent();
     // 不调用 revokeAllUrls：URLs 由调用方（DraftDetailPage）通过 onUnmounted 管理
     // 只清理可能存在的旧状态（初始状态通常为空）

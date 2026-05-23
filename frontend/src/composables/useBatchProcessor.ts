@@ -238,7 +238,8 @@ export function useBatchProcessor() {
       await processOneItem(item, retryAbortController.signal);
     }
 
-    if (!retryAbortController.signal.aborted) {
+    // N7: 使用 allDone 判断而非无条件设置 done
+    if (!retryAbortController.signal.aborted && allDone.value) {
       phase.value = 'done';
     }
     _retryInProgress = false;

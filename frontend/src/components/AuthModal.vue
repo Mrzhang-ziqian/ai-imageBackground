@@ -148,9 +148,9 @@
                     id="password"
                     v-model="password"
                     :type="showPassword ? 'text' : 'password'"
-                    placeholder="至少 6 位密码"
+                    placeholder="至少 8 位密码"
                     required
-                    minlength="6"
+                    minlength="8"
                     :disabled="submitting"
                     autocomplete="current-password"
                   />

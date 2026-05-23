@@ -56,7 +56,7 @@ app = FastAPI(
 )
 
 # CORS 配置 —— 从环境变量读取允许来源
-ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "*").split(",")
+ALLOWED_ORIGINS = (os.environ.get("CORS_ORIGINS") or "*").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in ALLOWED_ORIGINS],
@@ -466,6 +466,8 @@ async def remove_background(
         filename=file.filename or "image.png",
         model_label=model_label,
     )
+    if history_id is None:
+        logger.warning(f"历史记录保存失败（图片已成功处理）: user={current_user.id} file={file.filename}")
 
     # --- 7.6 配额已原子扣减（free 用户在上面 UPDATE WHERE 中完成） ---
     if current_user.plan == "free":

@@ -232,11 +232,11 @@ onMounted(async () => {
     : '';
 
   // 恢复状态到 remover
+  // N3: originalBlob 不在 restoreFromDraft 签名中，移除冗余参数
   remover.restoreFromDraft({
     resultUrl,
     resultBlob,
     originalUrl,
-    originalBlob,
     filename: draftMeta.filename,
     dimensions: draftMeta.dimensions,
     modelUsed: draftMeta.modelUsed,

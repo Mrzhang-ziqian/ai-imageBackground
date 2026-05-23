@@ -100,6 +100,7 @@ export function useAuth() {
     user,
     loading,
     error,
+    token,
     initialized,
     isLoggedIn,
     userPlan,
