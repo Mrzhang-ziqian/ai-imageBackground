@@ -25,6 +25,11 @@ class User(Base):
     quota_used  = Column(Integer, default=0, server_default="0")
     quota_date  = Column(Date, nullable=True)                            # last quota usage date (for daily reset)
 
+    # G24: Stripe subscription
+    stripe_customer_id = Column(String(255), nullable=True, unique=True, index=True)
+    stripe_subscription_id = Column(String(255), nullable=True, unique=True, index=True)
+    subscription_status = Column(String(20), nullable=True)  # active | past_due | canceled | None
+
     # Onboarding
     onboarding_completed = Column(Boolean, default=False, server_default="0")  # 新手引导是否完成
 

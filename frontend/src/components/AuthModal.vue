@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="visible" class="auth-overlay" @click.self="$emit('close')">
-        <div class="auth-modal" role="dialog" aria-label="用户登录/注册">
+        <div class="auth-modal" role="dialog" aria-modal="true" aria-label="用户登录/注册">
           <!-- ==================== 左栏：品牌区 ==================== -->
           <div class="brand-panel">
             <!-- 装饰图案 -->
@@ -86,7 +86,7 @@
 
             <!-- 错误提示 -->
             <Transition name="error-slide">
-              <div v-if="errorMsg" class="error-msg">
+              <div v-if="errorMsg" class="error-msg" role="alert" aria-live="assertive">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" class="error-icon">
                   <circle cx="8" cy="8" r="7" stroke="#DC2626" stroke-width="1.5"/>
                   <path d="M8 5v3M8 10v1" stroke="#DC2626" stroke-width="1.5" stroke-linecap="round"/>
@@ -101,7 +101,7 @@
               <Transition name="field-expand">
                 <div v-if="!isLogin" class="form-group">
                   <div class="input-wrapper">
-                    <svg class="input-icon" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <svg class="input-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                       <circle cx="9" cy="6" r="3" stroke="currentColor" stroke-width="1.5"/>
                       <path d="M3 15c0-3 2.7-5.5 6-5.5s6 2.5 6 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     </svg>
@@ -110,6 +110,7 @@
                       v-model="username"
                       type="text"
                       placeholder="你的昵称"
+                      aria-label="用户名"
                       required
                       minlength="2"
                       :disabled="submitting"
@@ -121,7 +122,7 @@
 
               <div class="form-group">
                 <div class="input-wrapper">
-                  <svg class="input-icon" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <svg class="input-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                     <rect x="2" y="4" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.5"/>
                     <path d="M2 5l7 5 7-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
@@ -130,6 +131,7 @@
                     v-model="email"
                     type="email"
                     placeholder="your@email.com"
+                    aria-label="邮箱地址"
                     required
                     :disabled="submitting"
                     autocomplete="email"
@@ -139,7 +141,7 @@
 
               <div class="form-group">
                 <div class="input-wrapper">
-                  <svg class="input-icon" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                  <svg class="input-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                     <rect x="3" y="7" width="12" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5"/>
                     <circle cx="9" cy="11" r="1.2" fill="currentColor"/>
                     <path d="M9 4v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -149,6 +151,7 @@
                     v-model="password"
                     :type="showPassword ? 'text' : 'password'"
                     placeholder="至少 8 位密码"
+                    aria-label="密码"
                     required
                     minlength="8"
                     :disabled="submitting"
@@ -199,10 +202,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useAuth } from '@/composables/useAuth'
 
-defineProps<{
+const props = defineProps<{
   visible: boolean
 }>()
 
@@ -210,7 +213,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { login, register, error } = useAuth()
+// login/register 是函数，不需要 storeToRefs（无响应式需求）
+const { login, register } = useAuth()
 
 const isLogin = ref(true)
 const email = ref('')
@@ -219,6 +223,13 @@ const password = ref('')
 const submitting = ref(false)
 const errorMsg = ref('')
 const showPassword = ref(false)
+
+// Q2: 每次打开弹窗时重置错误消息
+watch(() => props.visible, (newVal) => {
+  if (newVal) {
+    errorMsg.value = ''
+  }
+})
 
 /** 安全切换模式 — 防止重复切换，始终清理表单状态 */
 function switchToMode(loginMode: boolean) {

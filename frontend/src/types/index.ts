@@ -10,6 +10,7 @@ export interface UserInfo {
   plan: 'free' | 'pro' | 'team';
   quota_daily: number;
   quota_used: number;
+  subscription_status?: string | null;
 }
 
 /** 登录/注册响应 */
@@ -349,4 +350,29 @@ export const BACKGROUND_TEMPLATES: BackgroundTemplate[] = [
     shadow: { blur: 30, offsetX: 0, offsetY: 12, color: 'rgba(0,0,0,0.12)' },
   },
 ] as const;
+
+// ============================================================
+// G24: Subscription & Payment
+// ============================================================
+
+/** Stripe Checkout Session 响应 */
+export interface CheckoutResponse {
+  checkout_url: string;
+  session_id: string;
+}
+
+/** Stripe Customer Portal 响应 */
+export interface PortalResponse {
+  portal_url: string;
+}
+
+/** Pro 功能限制 */
+export interface ProFeatures {
+  max_batch_free: number;
+  max_batch_pro: number;
+  max_history_free: number;
+  max_history_pro: number;
+  edge_tools_pro_only: boolean;
+  high_res_pro_only: boolean;
+}
 

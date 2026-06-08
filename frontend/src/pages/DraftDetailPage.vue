@@ -78,9 +78,11 @@
                 <EdgeToolsPanel
                   :transparent-blob="remover.transparentBlob.value"
                   :original-url="remover.originalUrl.value"
+                  :is-pro="isPro"
                   @update:result-blob="handleEdgeUpdate"
                   @reset-edge="handleEdgeReset"
                   @toast="ui.showToast"
+                  @show-pro-modal="showProModal = true"
                 />
                 <DownloadPanel
                   :blob="remover.resultBlob.value"
@@ -98,6 +100,7 @@
     <AppFooter />
     <ToastMessage :toast="ui.toast" />
     <AuthModal :visible="ui.authModalVisible" @close="ui.closeAuthModal()" />
+    <ProPlanModal :visible="showProModal" @close="showProModal = false" />
 
     <!-- 离开确认对话框 -->
     <Transition name="modal-fade">
@@ -132,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppHeader from '@/components/AppHeader.vue';
 import AppFooter from '@/components/AppFooter.vue';
@@ -143,20 +146,26 @@ import BackgroundTemplatePicker from '@/components/BackgroundTemplatePicker.vue'
 import EdgeToolsPanel from '@/components/EdgeToolsPanel.vue';
 import DownloadPanel from '@/components/DownloadPanel.vue';
 import AuthModal from '@/components/AuthModal.vue';
+import ProPlanModal from '@/components/ProPlanModal.vue';
 import { useBackgroundRemover } from '@/composables/useBackgroundRemover';
 import { useHistory } from '@/composables/useHistory';
 import { useQuota } from '@/composables/useQuota';
+import { useAuth } from '@/composables/useAuth';
 import { useUiStore } from '@/stores/ui';
 import { useDraftsStore } from '@/stores/drafts';
 import type { BgColor } from '@/types';
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuth();
 const remover = useBackgroundRemover();
 const history = useHistory();
 const quota = useQuota();
 const ui = useUiStore();
 const drafts = useDraftsStore();
+
+const isPro = computed(() => auth.userPlan.value === 'pro');
+const showProModal = ref(false);
 
 const loading = ref(true);
 const confirming = ref(false);

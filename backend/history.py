@@ -18,6 +18,7 @@ from database import get_db
 from auth import require_user
 from models import User, History
 from schemas import HistoryItemOut
+from subscription import get_history_limit
 
 logger = logging.getLogger(__name__)
 
@@ -97,12 +98,13 @@ async def list_history(
     current_user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """返回当前用户的历史记录列表（最新在前）。"""
+    """返回当前用户的历史记录列表（最新在前）。G24: 根据用户计划限制条数。"""
+    history_limit = get_history_limit(current_user.plan)
     result = await db.execute(
         select(History)
         .where(History.user_id == current_user.id)
         .order_by(History.created_at.desc())
-        .limit(MAX_HISTORY_PER_USER)
+        .limit(history_limit)
     )
     entries = result.scalars().all()
 

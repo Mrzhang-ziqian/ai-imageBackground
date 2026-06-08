@@ -1,13 +1,13 @@
 <template>
   <Transition name="modal-fade">
     <div v-if="visible" class="modal-overlay" @click.self="onClose">
-      <div class="pro-modal">
+      <div class="pro-modal" role="dialog" aria-modal="true" aria-label="Pro 计划详情">
         <!-- 头部 -->
         <div class="pro-header">
           <span class="pro-badge">PRO</span>
           <h3 class="pro-title">升级至 Pro 计划</h3>
           <p class="pro-subtitle">解锁全部功能，提升工作效率</p>
-          <button class="btn-close" @click="onClose" title="关闭">
+          <button class="btn-close" @click="onClose" aria-label="关闭">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -19,7 +19,6 @@
           <span class="pro-currency">¥</span>
           <span class="pro-amount">29</span>
           <span class="pro-period">/月</span>
-          <div class="pro-tag">即将上线</div>
         </div>
 
         <!-- 功能对比 -->
@@ -41,31 +40,27 @@
           </div>
         </div>
 
-        <!-- CTA 邮件通知 -->
-        <div class="pro-notify">
-          <p class="notify-desc">
-            Pro 计划正在准备中，留下邮箱，上线后第一时间通知你。
-          </p>
-          <div class="notify-form">
-            <input
-              v-model="email"
-              type="email"
-              class="notify-input"
-              placeholder="your@email.com"
-              @keydown.enter="onSubscribe"
-            />
-            <button class="btn-subscribe" :disabled="subscribing" @click="onSubscribe">
-              <template v-if="!subscribing">通知我</template>
-              <span v-else class="mini-spinner"></span>
-            </button>
-          </div>
-          <p v-if="subscribed" class="notify-success">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            已登记，上线当天会邮件通知你
-          </p>
-          <p v-if="subscribeError" class="notify-error">{{ subscribeError }}</p>
+        <!-- 已是 Pro 用户 -->
+        <div v-if="isPro" class="pro-already">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span>你已是 Pro 用户</span>
+          <button class="btn-manage" @click="handleManageSubscription" :disabled="portalLoading">
+            <span v-if="!portalLoading">管理订阅</span>
+            <span v-else class="mini-spinner"></span>
+          </button>
+        </div>
+
+        <!-- CTA：升级按钮 -->
+        <div v-else class="pro-cta">
+          <button class="btn-upgrade" :disabled="checkoutLoading" @click="handleCheckout">
+            <span v-if="!checkoutLoading">立即升级</span>
+            <span v-else class="mini-spinner"></span>
+          </button>
+          <p class="cta-note">安全支付，由 Stripe 提供支持。可随时取消。</p>
+          <p v-if="checkoutError" class="cta-error">{{ checkoutError }}</p>
         </div>
       </div>
     </div>
@@ -73,15 +68,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch, computed } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useAuthStore } from '@/stores/auth';
+import { subscriptionApi } from '@/services/api';
 
-defineProps<{ visible: boolean }>();
+const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ (e: 'close'): void }>();
 
-const email = ref('');
-const subscribing = ref(false);
-const subscribed = ref(false);
-const subscribeError = ref('');
+const auth = useAuthStore();
+const { userPlan, token } = storeToRefs(auth);
+
+const isPro = computed(() => userPlan.value === 'pro');
+
+const checkoutLoading = ref(false);
+const checkoutError = ref('');
+const portalLoading = ref(false);
+
+// 重置状态
+watch(() => props.visible, (newVal) => {
+  if (newVal) {
+    checkoutError.value = '';
+    checkoutLoading.value = false;
+    portalLoading.value = false;
+  }
+});
 
 const compareRows = [
   { feature: '全分辨率下载', free: '800px 预览', pro: '原图尺寸', proCheck: true },
@@ -93,37 +104,41 @@ const compareRows = [
   { feature: '优先处理通道', free: '×', pro: '✓', proCheck: true },
 ];
 
-const NOTIFY_KEY = 'ai-bg-remover-pro-notify';
-
 function onClose(): void {
   emit('close');
 }
 
-function onSubscribe(): void {
-  const val = email.value.trim();
-  if (!val || !val.includes('@') || !val.includes('.')) {
-    subscribeError.value = '请输入有效的邮箱地址';
-    return;
-  }
-  subscribeError.value = '';
-  subscribing.value = true;
+async function handleCheckout(): Promise<void> {
+  checkoutError.value = '';
+  checkoutLoading.value = true;
 
-  // 模拟异步保存（存储到 localStorage）
-  setTimeout(() => {
-    try {
-      const list = JSON.parse(localStorage.getItem(NOTIFY_KEY) || '[]');
-      if (!list.includes(val)) {
-        list.push(val);
-        localStorage.setItem(NOTIFY_KEY, JSON.stringify(list));
-      }
-      subscribed.value = true;
-      email.value = '';
-    } catch {
-      subscribeError.value = '保存失败，请稍后重试';
-    } finally {
-      subscribing.value = false;
+  try {
+    const res = await subscriptionApi.createCheckout(token.value!);
+    // 跳转到 Stripe Checkout 页面
+    window.location.href = res.checkout_url;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '创建支付会话失败';
+    // 如果 Stripe 未配置，显示更友好的提示
+    if (msg.includes('503') || msg.includes('尚未配置')) {
+      checkoutError.value = '支付系统正在配置中，请稍后再试';
+    } else {
+      checkoutError.value = msg;
     }
-  }, 600);
+  } finally {
+    checkoutLoading.value = false;
+  }
+}
+
+async function handleManageSubscription(): Promise<void> {
+  portalLoading.value = true;
+  try {
+    const res = await subscriptionApi.createPortal(token.value!);
+    window.location.href = res.portal_url;
+  } catch (e: unknown) {
+    console.error('创建管理页面失败:', e);
+  } finally {
+    portalLoading.value = false;
+  }
 }
 </script>
 
@@ -212,7 +227,6 @@ function onSubscribe(): void {
   margin-bottom: 20px;
   background: linear-gradient(135deg, #eef2ff, #f5f3ff);
   border-radius: 14px;
-  position: relative;
 }
 
 .pro-currency {
@@ -233,18 +247,6 @@ function onSubscribe(): void {
   font-size: 14px;
   color: #6b7280;
   margin-left: 2px;
-}
-
-.pro-tag {
-  position: absolute;
-  top: -10px;
-  right: 16px;
-  padding: 2px 10px;
-  background: #f59e0b;
-  color: #fff;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
 }
 
 /* 功能对比 */
@@ -302,82 +304,84 @@ function onSubscribe(): void {
   gap: 3px;
 }
 
-/* 邮件通知 */
-.pro-notify {
+/* 已是 Pro 用户 */
+.pro-already {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 0;
+  border-top: 1px solid #e5e7eb;
+  color: #059669;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.btn-manage {
+  padding: 6px 16px;
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-manage:hover:not(:disabled) {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+.btn-manage:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* CTA */
+.pro-cta {
+  text-align: center;
   border-top: 1px solid #e5e7eb;
   padding-top: 18px;
 }
 
-.notify-desc {
-  font-size: 12px;
-  color: #6b7280;
-  margin: 0 0 10px;
-  text-align: center;
-  line-height: 1.5;
-}
-
-.notify-form {
-  display: flex;
-  gap: 8px;
-}
-
-.notify-input {
-  flex: 1;
-  padding: 10px 14px;
-  border: 1.5px solid #d1d5db;
-  border-radius: 10px;
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s;
-  background: #f9fafb;
-}
-.notify-input:focus {
-  border-color: #6366f1;
-  background: #fff;
-}
-.notify-input::placeholder {
-  color: #9ca3af;
-}
-
-.btn-subscribe {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px 18px;
+.btn-upgrade {
+  width: 100%;
+  padding: 14px 24px;
   border: none;
-  border-radius: 10px;
-  background: #6366f1;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
   color: #fff;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
-  white-space: nowrap;
-}
-.btn-subscribe:hover:not(:disabled) {
-  background: #4f46e5;
-}
-.btn-subscribe:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.notify-success {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 12px;
-  color: #059669;
+  min-height: 48px;
+}
+.btn-upgrade:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+.btn-upgrade:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.cta-note {
+  font-size: 11px;
+  color: #9ca3af;
   margin: 10px 0 0;
 }
 
-.notify-error {
+.cta-error {
   font-size: 12px;
   color: #ef4444;
   margin: 8px 0 0;
-  text-align: center;
 }
 
 .mini-spinner {
@@ -434,13 +438,6 @@ function onSubscribe(): void {
   }
   .compare-col-plan {
     font-size: 11px;
-  }
-  .notify-form {
-    flex-direction: column;
-  }
-  .btn-subscribe {
-    width: 100%;
-    justify-content: center;
   }
 }
 </style>

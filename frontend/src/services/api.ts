@@ -1,11 +1,18 @@
-import type { RemoveBgResult, ImageDimensions, AuthTokenResponse, HistoryEntry } from '@/types';
+import type { RemoveBgResult, ImageDimensions, AuthTokenResponse, HistoryEntry, CheckoutResponse, PortalResponse, ProFeatures } from '@/types';
 import { API_BASE } from '@/types';
 
 // ============ Phase 5: Auth API ============
 
+/** FastAPI 字段级校验错误项 */
+interface ValidationErrorItem {
+  loc: string[];
+  msg: string;
+  type: string;
+}
+
 /** 后端返回的错误结构 */
-interface ApiError {
-  detail?: string;
+interface ApiErrorBody {
+  detail?: string | ValidationErrorItem[];
 }
 
 class AuthApiError extends Error {
@@ -27,7 +34,21 @@ export class QuotaExhaustedError extends Error {
   }
 }
 
-async function authFetch(url: string, options: RequestInit = {}): Promise<any> {
+/** 从错误响应中提取用户可读的错误消息 */
+async function parseApiError(res: Response): Promise<string> {
+  let msg = `请求失败 (${res.status})`;
+  try {
+    const body: ApiErrorBody = await res.json();
+    if (Array.isArray(body.detail)) {
+      msg = body.detail.map((e: ValidationErrorItem) => e.msg).join('；');
+    } else {
+      msg = body.detail ?? msg;
+    }
+  } catch { /* ignore */ }
+  return msg;
+}
+
+async function authFetch<T = unknown>(url: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -37,17 +58,7 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<any> {
   });
 
   if (!res.ok) {
-    let msg = `请求失败 (${res.status})`;
-    try {
-      const body = await res.json();
-      if (Array.isArray(body.detail)) {
-        // FastAPI 字段级校验错误：detail 是 [{loc, msg, type}, ...] 数组
-        msg = body.detail.map((e: any) => e.msg).join('；');
-      } else {
-        msg = body.detail ?? msg;
-      }
-    } catch { /* ignore */ }
-    throw new AuthApiError(msg, res.status);
+    throw new AuthApiError(await parseApiError(res), res.status);
   }
 
   return res.json();
@@ -207,16 +218,7 @@ async function historyFetch(url: string, authToken: string | null, options: Requ
   });
 
   if (!res.ok) {
-    let msg = `请求失败 (${res.status})`;
-    try {
-      const body = await res.json();
-      if (Array.isArray(body.detail)) {
-        msg = body.detail.map((e: any) => e.msg).join('；');
-      } else {
-        msg = body.detail ?? msg;
-      }
-    } catch { /* ignore */ }
-    throw new Error(msg);
+    throw new Error(await parseApiError(res));
   }
 
   return res;
@@ -247,5 +249,53 @@ export const historyApi = {
   async clearAll(authToken?: string | null): Promise<void> {
     const token = authToken ?? localStorage.getItem('auth_token');
     await historyFetch(`${API_BASE}/history`, token, { method: 'DELETE' });
+  },
+};
+
+// ============ G24: Subscription API ============
+
+export const subscriptionApi = {
+  /** 获取 Pro 功能限制（公开接口，无需鉴权） */
+  async getFeatures(): Promise<ProFeatures> {
+    const res = await fetch(`${API_BASE}/subscription/features`);
+    if (!res.ok) throw new Error('获取功能限制失败');
+    return res.json();
+  },
+
+  /** 创建 Stripe Checkout Session */
+  async createCheckout(authToken: string, successUrl?: string, cancelUrl?: string): Promise<CheckoutResponse> {
+    const res = await fetch(`${API_BASE}/subscription/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        plan: 'pro',
+        ...(successUrl ? { success_url: successUrl } : {}),
+        ...(cancelUrl ? { cancel_url: cancelUrl } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const err = await parseApiError(res);
+      throw new Error(err);
+    }
+    return res.json();
+  },
+
+  /** 创建 Stripe Customer Portal Session */
+  async createPortal(authToken: string): Promise<PortalResponse> {
+    const res = await fetch(`${API_BASE}/subscription/portal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+    if (!res.ok) {
+      const err = await parseApiError(res);
+      throw new Error(err);
+    }
+    return res.json();
   },
 };

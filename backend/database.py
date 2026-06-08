@@ -76,6 +76,22 @@ async def init_db() -> None:
         except sa.exc.OperationalError:
             pass  # 表不存在（首次创建），忽略
 
+        # G24: 添加 Stripe 订阅相关列
+        try:
+            result = await conn.execute(sa.text("PRAGMA table_info('users')"))
+            columns = [row[1] for row in result.fetchall()]
+            if 'stripe_customer_id' not in columns:
+                await conn.execute(sa.text("ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR(255)"))
+                logger.info("数据库迁移: users.stripe_customer_id 列已添加")
+            if 'stripe_subscription_id' not in columns:
+                await conn.execute(sa.text("ALTER TABLE users ADD COLUMN stripe_subscription_id VARCHAR(255)"))
+                logger.info("数据库迁移: users.stripe_subscription_id 列已添加")
+            if 'subscription_status' not in columns:
+                await conn.execute(sa.text("ALTER TABLE users ADD COLUMN subscription_status VARCHAR(20)"))
+                logger.info("数据库迁移: users.subscription_status 列已添加")
+        except sa.exc.OperationalError:
+            pass
+
     # 插入内置账号
     from auth import hash_password
     from models import User

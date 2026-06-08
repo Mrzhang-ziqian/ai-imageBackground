@@ -6,12 +6,17 @@
  * 配额现在直接从 auth store 计算。
  */
 import { computed, readonly } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
 import { useAuth } from './useAuth'
 
 export function useQuota() {
   const auth = useAuthStore()
-  const { user, isLoggedIn, fetchMe } = useAuth()
+  // 🔴 修复: 使用 storeToRefs 保持响应式。
+  // Pinia store 通过 reactive() 代理，直接解构会丢失响应式，
+  // 导致 isLoggedIn/user 变成普通值，.value 返回 undefined，配额追踪完全失效。
+  const { user, isLoggedIn } = storeToRefs(auth)
+  const { fetchMe } = auth
 
   const quotaUsed = computed(() => {
     if (!isLoggedIn.value || !user.value) return 0

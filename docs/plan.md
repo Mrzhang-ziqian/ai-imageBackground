@@ -8,7 +8,7 @@
 | 核心功能 | 拖拽上传图片，AI 自动移除背景，支持预览和下载 |
 | 目标用户 | 电商卖家、设计师、普通用户 |
 | 对标产品 | [remove-bg.io](https://remove-bg.io/zh-CN) |
-| 当前阶段 | Phase 1~4 全部完成，Phase 5 商业化基础（G23 用户体系 ✅，G23a 强制登录 ✅，G28 体验重构 ✅，G31 产品设计分析 ✅，G32 Sprint A ✅，G33 Sprint B ✅，G34 Sprint C ✅，G35 Sprint D ✅，共 16 项 UX 优化已实施。G24 付费墙 🔜 当前阶段） |
+| 当前阶段 | Phase 1~4 全部完成，Phase 5 商业化基础（G23 用户体系 ✅，G23a 强制登录 ✅，G28 体验重构 ✅，G31 产品设计分析 ✅，G32~M Sprint ✅，G24 付费墙 ✅。G11 分享机制 🔜 当前阶段） |
 
 ---
 
@@ -244,7 +244,7 @@ python-multipart>=0.0.6
 |------|--------|------|------|
 | Q17 | - | ✅ 已完成 | **用户体系 (G23)**：注册/登录/用户中心，JWT 鉴权 + SQLite + 每日配额追踪 |
 | Q17a | - | ✅ 已完成 | **页面逻辑 & 强制登录重构 (G23 增强)**：废弃匿名试用 → 强制登录使用。后端拒绝未认证请求（401），前端 Landing Page 引导注册。修复历史可见性/去重/配额日重置。内置种子用户：`admin@admin.com / 12345678`（Pro 无限次）、`test@test.com / 12345678`（Free 每日5次） |
-| Q18 | - | 🔜 当前 | **变现设计 (G24)**：Freemium 付费墙 + Stripe/Paddle 支付集成 |
+| Q18 | - | ✅ 已完成 | **变现设计 (G24)**：Freemium 付费墙 + Stripe 支付集成。后端 subscription.py（Checkout/Portal/Webhook）+ Pro 功能门控（批量 1→50、历史 20→9999、边缘工具 Pro 专属）。前端 ProPlanModal 升级为真实支付流程 + EdgeToolsPanel Pro 门控 + Checkout 成功回调 |
 | Q19 | - | 🔜 当前 | **分享机制 (G11)**：Before/After GIF 生成 + 社交卡片 |
 
 ### 5.8 API 服务化 (Phase 6) 🆕

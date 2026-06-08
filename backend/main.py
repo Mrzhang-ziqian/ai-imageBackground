@@ -29,6 +29,7 @@ from database import init_db, get_db
 from auth import router as auth_router, require_user, check_and_reset_quota
 from models import User
 from history import router as history_router, save_history_entry, save_history_entry_blocked
+from subscription import router as subscription_router, get_batch_limit, get_history_limit
 
 # ---------- 日志 ----------
 logging.basicConfig(
@@ -69,6 +70,9 @@ app.include_router(auth_router)
 
 # 注册历史记录路由
 app.include_router(history_router)
+
+# G24: 注册订阅路由
+app.include_router(subscription_router)
 
 # ---------- 常量 ----------
 IS_DEV = os.environ.get("ENV", "production").lower() in ("dev", "development")
@@ -276,6 +280,8 @@ async def remove_background(
     - 必须登录（未认证返回 401）
     - 已登录（free）：每日有限配额（5 次），日期变更自动重置
     - 已登录（pro/team）：无限制
+    
+    G24: 响应头包含功能限制信息
     """
     # --- 1. 校验文件类型 ---
     if file.content_type not in ALLOWED_TYPES:
@@ -491,6 +497,9 @@ async def remove_background(
     resp_headers["X-Quota-Plan"] = current_user.plan
     resp_headers["X-Quota-Used"] = str(current_user.quota_used)
     resp_headers["X-Quota-Daily"] = str(current_user.quota_daily)
+    # G24: 功能限制响应头
+    resp_headers["X-Max-Batch"] = str(get_batch_limit(current_user.plan))
+    resp_headers["X-Max-History"] = str(get_history_limit(current_user.plan))
 
     return StreamingResponse(
         output,

@@ -370,15 +370,27 @@ onMounted(async () => {
   if (!localStorage.getItem(EXAMPLES_KEY) && auth.isLoggedIn) {
     showExamples.value = true;
   }
+  // G24: Stripe Checkout 成功回调
+  if (route.query.checkout === 'success') {
+    await auth.fetchMe();  // 刷新用户信息（plan 可能已更新）
+    router.replace({ query: {} });
+    ui.showToast({ message: '🎉 恭喜！你已成功升级至 Pro', type: 'success' });
+  }
   // 草稿箱初始化
   drafts.init();
   // 历史加载
-  if (route.query.confirmed === '1') {
-    await history.reload();
-    await quota.syncFromServer();
-    router.replace({ query: {} });
-  } else if (!history.loaded) {
-    history.load();
+  try {
+    if (route.query.confirmed === '1') {
+      await history.reload();
+      await quota.syncFromServer();
+      router.replace({ query: {} });
+    } else if (!history.loaded) {
+      history.load();
+    }
+  } catch (e) {
+    if (import.meta.env.DEV) {
+      console.warn('[WorkspacePage] 历史/配额初始化失败:', e);
+    }
   }
 });
 

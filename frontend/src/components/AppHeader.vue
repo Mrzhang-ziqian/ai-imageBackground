@@ -3,7 +3,7 @@
     <div class="container">
       <div class="header-row">
         <div class="logo">
-          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
           </svg>
           <h1>AI 背景移除</h1>
@@ -19,9 +19,9 @@
               </span>
               <span class="username">{{ user.username }}</span>
             </div>
-            <button class="auth-btn outline" @click="handleLogout">退出</button>
+            <button class="auth-btn outline" @click="handleLogout" aria-label="退出登录">退出</button>
           </template>
-          <button v-else class="auth-btn primary" @click="$emit('open-auth')">
+          <button v-else class="auth-btn primary" @click="$emit('open-auth')" aria-label="打开登录窗口">
             登录
           </button>
         </div>
@@ -33,6 +33,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useQuota } from '@/composables/useQuota'
@@ -40,8 +41,10 @@ import { useQuota } from '@/composables/useQuota'
 defineEmits<{ openAuth: [] }>()
 
 const router = useRouter()
-const { isLoggedIn, user, userPlan, logout } = useAuth()
-const { quotaLeft, isExhausted } = useQuota()
+const auth = useAuth()
+const { isLoggedIn, user, userPlan } = storeToRefs(auth)
+const { logout } = auth
+const { quotaLeft } = useQuota()
 
 const planLabel = computed(() => {
   const map: Record<string, string> = { free: '免费', pro: 'Pro', team: 'Team' }

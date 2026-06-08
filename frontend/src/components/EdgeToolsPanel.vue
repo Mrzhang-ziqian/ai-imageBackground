@@ -1,9 +1,9 @@
 <template>
   <div class="edge-panel">
     <!-- 面板头部 -->
-    <div class="panel-header" @click="expanded = !expanded">
+    <button class="panel-header" @click="expanded = !expanded" :aria-expanded="expanded" aria-controls="edge-panel-body">
       <div class="header-left">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
@@ -19,21 +19,44 @@
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </div>
-    </div>
+    </button>
 
     <!-- 面板内容 -->
     <Transition name="collapse">
-      <div v-if="expanded" class="panel-body">
+      <div v-if="expanded" class="panel-body" id="edge-panel-body">
+        <!-- G24: Pro 功能门控 -->
+        <div v-if="showProGate" class="pro-gate">
+          <div class="pro-gate-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <p class="pro-gate-title">边缘优化为 Pro 功能</p>
+          <p class="pro-gate-desc">升级 Pro 解锁羽化、平滑和手动修复工具</p>
+          <button class="btn-pro-gate" @click="emit('showProModal')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            了解 Pro 计划
+          </button>
+        </div>
+
+        <!-- 工具内容（仅 Pro 可见） -->
+        <template v-else>
         <!-- Tab 切换 -->
-        <div class="tabs">
+        <div class="tabs" role="tablist" aria-label="边缘编辑工具">
           <button
             v-for="tab in tabs"
             :key="tab.key"
             class="tab-btn"
             :class="{ active: activeTab === tab.key }"
             @click="activeTab = tab.key"
+            role="tab"
+            :aria-selected="activeTab === tab.key"
+            :tabindex="activeTab === tab.key ? 0 : -1"
           >
-            <span class="tab-icon" v-html="tab.icon"></span>
+            <span class="tab-icon" v-html="tab.icon" aria-hidden="true"></span>
             {{ tab.label }}
           </button>
         </div>
@@ -52,6 +75,7 @@
             max="20"
             step="0.5"
             class="slider"
+            aria-label="羽化半径滑块"
           />
           <div class="slider-ticks">
             <span>0</span><span>5</span><span>10</span><span>15</span><span>20</span>
@@ -91,6 +115,7 @@
             max="10"
             step="1"
             class="slider"
+            aria-label="边缘平滑强度滑块"
           />
           <div class="slider-ticks">
             <span>1</span><span>3</span><span>5</span><span>7</span><span>10</span>
@@ -163,6 +188,7 @@
             max="80"
             step="1"
             class="slider"
+            aria-label="笔刷大小滑块"
           />
 
           <!-- 画笔 Canvas -->
@@ -227,6 +253,7 @@
             </button>
           </div>
         </div>
+        </template>
       </div>
     </Transition>
   </div>
@@ -241,12 +268,15 @@ const props = defineProps<{
   transparentBlob: Blob | null;
   /** 原始图片 URL，用于"从原图恢复"画笔模式 */
   originalUrl?: string;
+  /** G24: 是否为 Pro 用户（控制功能门控） */
+  isPro?: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:resultBlob', blob: Blob): void;
   (e: 'resetEdge'): void;
   (e: 'toast', payload: { message: string; type: 'success' | 'error' }): void;
+  (e: 'showProModal'): void;
 }>();
 
 const { featherAlpha, smoothAlpha } = useEdgeTools();
@@ -256,6 +286,7 @@ const expanded = ref(false);
 const activeTab = ref<'feather' | 'smooth' | 'brush'>('feather');
 const isProcessing = ref(false);
 const hasEdgeEdit = ref(false);
+const showProGate = computed(() => !props.isPro);
 
 // ---- 羽化参数 ----
 const featherRadius = ref(3);
@@ -534,6 +565,44 @@ onBeforeUnmount(() => {
 
 .panel-body {
   padding: 0 18px 18px;
+}
+
+/* ---- G24: Pro 功能门控 ---- */
+.pro-gate {
+  text-align: center;
+  padding: 28px 16px 20px;
+}
+.pro-gate-icon {
+  margin-bottom: 12px;
+}
+.pro-gate-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 4px;
+}
+.pro-gate-desc {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0 0 16px;
+}
+.btn-pro-gate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-pro-gate:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
 }
 
 /* ---- Tab 切换 ---- */

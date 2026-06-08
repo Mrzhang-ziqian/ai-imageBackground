@@ -127,6 +127,9 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     if not user or not verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="邮箱或密码错误")
 
+    # Q1: 登录时刷新配额日期，确保用户看到当日剩余次数
+    await check_and_reset_quota(user, db)
+
     token = create_access_token(user.id)
     return TokenResponse(
         access_token=token,
@@ -135,7 +138,12 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(current_user: User = Depends(require_user)):
+async def get_me(
+    current_user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Q1: 刷新配额日期后再返回，确保前端显示当日剩余次数
+    await check_and_reset_quota(current_user, db)
     return UserResponse.model_validate(current_user)
 
 
