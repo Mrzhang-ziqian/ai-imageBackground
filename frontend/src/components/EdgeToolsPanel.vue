@@ -286,7 +286,7 @@ const expanded = ref(false);
 const activeTab = ref<'feather' | 'smooth' | 'brush'>('feather');
 const isProcessing = ref(false);
 const hasEdgeEdit = ref(false);
-const showProGate = computed(() => !props.isPro);
+const showProGate = computed(() => !(props.isPro ?? false));
 
 // ---- 羽化参数 ----
 const featherRadius = ref(3);
@@ -888,10 +888,6 @@ onBeforeUnmount(() => {
 
   .panel-header {
     padding: 10px 14px;
-  }
-
-  .panel-header h4 {
-    font-size: 13px;
   }
 
   .tabs {

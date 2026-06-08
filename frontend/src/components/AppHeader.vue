@@ -13,7 +13,10 @@
         <div class="user-area">
           <template v-if="isLoggedIn && user">
             <div class="user-info">
-              <span class="plan-badge" :class="user.plan">{{ planLabel }}</span>
+              <span class="plan-badge" :class="[user.plan, { 'past-due': user.subscription_status === 'past_due' || user.subscription_status === 'unpaid' }]">{{ planLabel }}</span>
+              <span v-if="user.subscription_status === 'past_due' || user.subscription_status === 'unpaid'" class="sub-warn">
+                支付逾期
+              </span>
               <span class="quota-text" v-if="user.plan === 'free'">
                 剩余 {{ quotaLeft }} 次
               </span>
@@ -95,6 +98,21 @@ function handleLogout(): void {
   background: #fef3c7;
   border-color: #fcd34d;
   color: #b45309;
+}
+.plan-badge.past-due {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #d97706;
+  animation: pulse-warn 2s ease-in-out infinite;
+}
+@keyframes pulse-warn {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.sub-warn {
+  font-size: 0.6875rem;
+  color: #d97706;
+  font-weight: 600;
 }
 .quota-text {
   color: var(--text-muted);

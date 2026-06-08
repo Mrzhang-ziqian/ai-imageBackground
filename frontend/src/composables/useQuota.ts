@@ -8,7 +8,6 @@
 import { computed, readonly } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import { useAuth } from './useAuth'
 
 export function useQuota() {
   const auth = useAuthStore()

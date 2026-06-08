@@ -43,8 +43,14 @@ MAX_HISTORY_PRO = 9999
 
 
 def _is_stripe_configured() -> bool:
-    """检查 Stripe 是否已配置（非空 API Key + Price ID）"""
-    return bool(STRIPE_API_KEY and STRIPE_PRO_PRICE_ID)
+    """检查 Stripe 是否已配置（非空 API Key + Price ID + stripe 包可导入）"""
+    if not (STRIPE_API_KEY and STRIPE_PRO_PRICE_ID):
+        return False
+    try:
+        import stripe  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 # ---------- Routes ----------
@@ -87,13 +93,16 @@ async def create_checkout(
         try:
             customer = stripe.Customer.create(
                 email=current_user.email,
-                metadata={"user_id": current_user.id},
+                metadata={"user_id": str(current_user.id)},
             )
             customer_id = customer.id
             current_user.stripe_customer_id = customer_id
-            await db.flush()
+            # BUG1 修复: 立即 commit 持久化 customer_id，防止后续失败导致重复 Customer
+            await db.commit()
         except stripe.error.StripeError as e:
             logger.error(f"创建 Stripe Customer 失败: {e}")
+            # 回滚本地记录，避免脏数据
+            await db.rollback()
             raise HTTPException(status_code=500, detail="创建支付客户失败")
 
     # 构建 success/cancel URL
@@ -108,9 +117,9 @@ async def create_checkout(
             line_items=[{"price": STRIPE_PRO_PRICE_ID, "quantity": 1}],
             success_url=success_url,
             cancel_url=cancel_url,
-            metadata={"user_id": current_user.id},
+            metadata={"user_id": str(current_user.id)},
             subscription_data={
-                "metadata": {"user_id": current_user.id},
+                "metadata": {"user_id": str(current_user.id)},
             },
         )
         return CheckoutResponse(checkout_url=session.url, session_id=session.id)
@@ -245,8 +254,8 @@ async def _handle_subscription_updated(event: dict, db: AsyncSession):
         user.plan = "pro"
         user.quota_daily = PRO_QUOTA_DAILY
     elif status in ("past_due", "unpaid"):
-        # 逾期未付 → 降级为 free，但给 3 天宽限期
-        user.subscription_status = "past_due"
+        # 逾期未付 → 保留原始状态，给宽限期
+        user.subscription_status = status
         # 暂不降级，等待 customer.subscription.deleted
 
     await db.commit()

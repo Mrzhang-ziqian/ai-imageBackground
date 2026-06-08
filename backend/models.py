@@ -44,7 +44,7 @@ class User(Base):
     )
 
     # Relationships
-    history_entries = relationship("History", back_populates="user", cascade="all, delete-orphan", lazy="dynamic")
+    history_entries = relationship("History", back_populates="user", cascade="all, delete-orphan", lazy="noload")
 
 
 class History(Base):

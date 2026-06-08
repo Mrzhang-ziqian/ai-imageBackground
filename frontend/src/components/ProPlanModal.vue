@@ -113,7 +113,11 @@ async function handleCheckout(): Promise<void> {
   checkoutLoading.value = true;
 
   try {
-    const res = await subscriptionApi.createCheckout(token.value!);
+    if (!token.value) {
+      checkoutError.value = '请先登录后再升级';
+      return;
+    }
+    const res = await subscriptionApi.createCheckout(token.value);
     // 跳转到 Stripe Checkout 页面
     window.location.href = res.checkout_url;
   } catch (e: unknown) {
@@ -132,10 +136,15 @@ async function handleCheckout(): Promise<void> {
 async function handleManageSubscription(): Promise<void> {
   portalLoading.value = true;
   try {
-    const res = await subscriptionApi.createPortal(token.value!);
+    if (!token.value) {
+      checkoutError.value = '请先登录';
+      return;
+    }
+    const res = await subscriptionApi.createPortal(token.value);
     window.location.href = res.portal_url;
   } catch (e: unknown) {
-    console.error('创建管理页面失败:', e);
+    const msg = e instanceof Error ? e.message : '创建管理页面失败';
+    checkoutError.value = msg;
   } finally {
     portalLoading.value = false;
   }

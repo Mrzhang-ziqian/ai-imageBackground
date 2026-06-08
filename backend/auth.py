@@ -129,6 +129,7 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
     # Q1: 登录时刷新配额日期，确保用户看到当日剩余次数
     await check_and_reset_quota(user, db)
+    await db.commit()  # P0-6: 登录后立即持久化配额重置结果
 
     token = create_access_token(user.id)
     return TokenResponse(
@@ -144,6 +145,7 @@ async def get_me(
 ):
     # Q1: 刷新配额日期后再返回，确保前端显示当日剩余次数
     await check_and_reset_quota(current_user, db)
+    await db.commit()  # P0-6: 立即持久化配额重置结果
     return UserResponse.model_validate(current_user)
 
 

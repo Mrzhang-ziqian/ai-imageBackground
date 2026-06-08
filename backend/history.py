@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/history", tags=["history"])
 
 HISTORY_DIR = "data/history"
-MAX_HISTORY_PER_USER = 100      # 每个用户最多保留成功记录
 MAX_BLOCKED_PER_USER = 5        # 被配额拒绝的记录最多保留条数（防止刷接口）
 THUMB_SIDE = 120
 
@@ -71,17 +70,6 @@ def _mime_from_path(path: str) -> str:
     }.get(ext, "image/jpeg")
 
 
-async def _read_thumb_async(path: str) -> tuple[str, str]:
-    """P1-4: 异步读取缩略图文件，避免阻塞事件循环。返回 (base64_data_url, mime)。"""
-    try:
-        blob = await asyncio.to_thread(_sync_read_file, path)
-        if blob:
-            return _data_url(blob, _mime_from_path(path)), _mime_from_path(path)
-    except Exception:
-        pass
-    return "", ""
-
-
 def _sync_read_file(path: str) -> bytes | None:
     """同步读取文件内容（供 asyncio.to_thread 使用）。"""
     try:
@@ -120,9 +108,9 @@ async def list_history(
         orig_thumb_b64 = ""
         result_thumb_b64 = ""
         if isinstance(orig_blobs[i], bytes):
-            orig_thumb_b64, _ = _data_url(orig_blobs[i], _mime_from_path(e.thumb_original)), _mime_from_path(e.thumb_original)
+            orig_thumb_b64 = _data_url(orig_blobs[i], _mime_from_path(e.thumb_original))
         if isinstance(result_blobs[i], bytes):
-            result_thumb_b64, _ = _data_url(result_blobs[i], _mime_from_path(e.thumb_result)), _mime_from_path(e.thumb_result)
+            result_thumb_b64 = _data_url(result_blobs[i], _mime_from_path(e.thumb_result))
 
         items.append(HistoryItemOut(
             id=e.id,
@@ -375,12 +363,14 @@ async def save_history_entry(
             logger.info(f"已清理 blocked 记录 (id={blocked_existing.id})，即将写入新成功记录")
 
         # 清理超过上限的旧记录
-        # T6: limit 从 1000 缩小到 20，避免一次删除过多记录
+        # G24: 根据用户 plan 动态获取上限
+        from subscription import MAX_HISTORY_FREE
+        user_history_limit = get_history_limit(user.plan) if user else MAX_HISTORY_FREE
         count_result = await db.execute(
             select(History.id)
             .where(History.user_id == user.id)
             .order_by(History.created_at.desc())
-            .offset(MAX_HISTORY_PER_USER - 1)
+            .offset(user_history_limit - 1)
             .limit(20)
         )
         stale_ids = [row[0] for row in count_result.all()]
