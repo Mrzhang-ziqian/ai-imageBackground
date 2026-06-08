@@ -3,7 +3,6 @@
     <Transition name="modal-fade">
       <div v-if="visible" class="modal-overlay" @click.self="$emit('cancel')">
         <div class="modal-card" :class="{ exhausted: isExhausted }">
-
           <!-- ===== 情况 A：有剩余额度 → 确认弹窗 ===== -->
           <template v-if="!isExhausted">
             <div class="modal-icon">
@@ -70,7 +69,6 @@
               <button class="modal-btn upgrade" @click="$emit('upgrade')">升级 Pro</button>
             </div>
           </template>
-
         </div>
       </div>
     </Transition>

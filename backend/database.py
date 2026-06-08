@@ -93,7 +93,7 @@ async def init_db() -> None:
             pass
 
     # 插入内置账号
-    from auth import hash_password
+    from utils import hash_password
     from models import User
 
     async with async_session() as db:

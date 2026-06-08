@@ -148,7 +148,6 @@ import DownloadPanel from '@/components/DownloadPanel.vue';
 import AuthModal from '@/components/AuthModal.vue';
 import ProPlanModal from '@/components/ProPlanModal.vue';
 import { useBackgroundRemover } from '@/composables/useBackgroundRemover';
-import { useHistory } from '@/composables/useHistory';
 import { useQuota } from '@/composables/useQuota';
 import { useAuth } from '@/composables/useAuth';
 import { useUiStore } from '@/stores/ui';
@@ -159,7 +158,6 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuth();
 const remover = useBackgroundRemover();
-const history = useHistory();
 const quota = useQuota();
 const ui = useUiStore();
 const drafts = useDraftsStore();
@@ -238,8 +236,8 @@ onMounted(async () => {
 
   // 创建 Object URLs（track 以便卸载时自动回收）
   const resultUrl = trackUrl(URL.createObjectURL(resultBlob));
-  const originalUrl = hasOriginal.value
-    ? trackUrl(URL.createObjectURL(originalBlob!))
+  const originalUrl = hasOriginal.value && originalBlob
+    ? trackUrl(URL.createObjectURL(originalBlob))
     : '';
 
   // 恢复状态到 remover
@@ -300,7 +298,7 @@ async function handleDelete(): Promise<void> {
     releaseAllUrls();
     ui.showToast({ message: '草稿已删除', type: 'success' });
     router.replace('/workspace');
-  } catch (err) {
+  } catch (_err) {
     ui.showToast({ message: '删除失败，请重试', type: 'error' });
   } finally {
     deleting.value = false;

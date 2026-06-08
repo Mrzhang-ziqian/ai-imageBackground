@@ -42,7 +42,7 @@
         class="preview-box"
         :style="resultBoxStyle"
       >
-        <div v-if="imgState.resultLoading" class="shimmer-box" />
+        <div v-if="imgState.resultLoading" class="shimmer-box" ></div>
         <!-- 缩放容器 -->
         <div
           :ref="singleZoom.initContainer"
@@ -88,7 +88,7 @@
       <div class="preview-card">
         <div class="preview-label">原图</div>
         <div class="preview-box">
-          <div v-if="imgState.originalLoading" class="shimmer-box" />
+          <div v-if="imgState.originalLoading" class="shimmer-box" ></div>
           <div
             :ref="originalZoom.initContainer"
             class="zoom-container"
@@ -128,7 +128,7 @@
           class="preview-box"
           :style="resultBoxStyle"
         >
-          <div v-if="imgState.resultLoading" class="shimmer-box" />
+          <div v-if="imgState.resultLoading" class="shimmer-box" ></div>
           <div
             :ref="splitResultZoom.initContainer"
             class="zoom-container"

@@ -60,7 +60,8 @@ async function makeExampleImage(
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Failed to get 2d context');
 
   // 浅灰渐变背景
   const grad = ctx.createLinearGradient(0, 0, SIZE, SIZE);
@@ -75,14 +76,15 @@ async function makeExampleImage(
 
   // 转 Blob
   const blob = await new Promise<Blob>((resolve) => {
-    canvas.toBlob((b) => resolve(b!), 'image/png');
+    canvas.toBlob((b) => { if (b) resolve(b); }, 'image/png');
   });
 
   // 缩略图
   const thumbCanvas = document.createElement('canvas');
   thumbCanvas.width = THUMB_SIZE;
   thumbCanvas.height = THUMB_SIZE;
-  const thumbCtx = thumbCanvas.getContext('2d')!;
+  const thumbCtx = thumbCanvas.getContext('2d');
+  if (!thumbCtx) throw new Error('Failed to get thumb context');
   thumbCtx.drawImage(canvas, 0, 0, THUMB_SIZE, THUMB_SIZE);
   const thumbUrl = thumbCanvas.toDataURL('image/png');
 

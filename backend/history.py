@@ -216,8 +216,7 @@ async def save_history_entry_blocked(
 ) -> int | None:
     """配额超出时保存被阻塞的记录（仅原图信息 + 缩略图，无结果）。"""
     try:
-        import hashlib as hlib
-        file_hash = hlib.sha256(original_bytes).hexdigest()
+        file_hash = hashlib.sha256(original_bytes).hexdigest()
 
         # 去重：当天同一 hash 不重复保存
         from datetime import datetime, timezone, timedelta
@@ -363,9 +362,8 @@ async def save_history_entry(
             logger.info(f"已清理 blocked 记录 (id={blocked_existing.id})，即将写入新成功记录")
 
         # 清理超过上限的旧记录
-        # G24: 根据用户 plan 动态获取上限
-        from subscription import MAX_HISTORY_FREE
-        user_history_limit = get_history_limit(user.plan) if user else MAX_HISTORY_FREE
+        # G24: 根据用户 plan 动态获取上限（调用方已保证 user 非空）
+        user_history_limit = get_history_limit(user.plan)
         count_result = await db.execute(
             select(History.id)
             .where(History.user_id == user.id)

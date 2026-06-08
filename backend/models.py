@@ -54,7 +54,7 @@ class History(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     filename = Column(String(500), nullable=False)
-    file_hash = Column(String(64), nullable=True)      # 原图 SHA-256，用于去重
+    file_hash = Column(String(64), nullable=False)      # 原图 SHA-256，用于去重
     model_used = Column(String(100), nullable=False, default="")
     original_width = Column(Integer, nullable=False)
     original_height = Column(Integer, nullable=False)

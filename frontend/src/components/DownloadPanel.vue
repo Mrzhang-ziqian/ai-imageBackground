@@ -249,7 +249,7 @@ async function onDownloadWebp() {
     triggerDownload(webpBlob, props.filename.replace(/\.png$/i, '.webp'));
     open.value = false;
     emit('toast', { message: 'WebP 已下载', type: 'success' });
-  } catch (err) {
+  } catch (_err) {
     emit('toast', {
       message: 'WebP 转换失败',
       type: 'error',

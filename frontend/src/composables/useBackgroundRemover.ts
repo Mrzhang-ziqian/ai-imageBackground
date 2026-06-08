@@ -1,9 +1,8 @@
 import { ref, reactive, shallowRef, readonly } from 'vue';
-import type { ProcessingState, BgColor, FileValidationResult, ImageDimensions, BackgroundTemplate } from '@/types';
+import type { ProcessingState, BgColor, FileValidationResult, ImageDimensions } from '@/types';
 import { ALLOWED_TYPES, MAX_FILE_SIZE, BACKGROUND_TEMPLATES } from '@/types';
 import { uploadAndRemoveBg } from '@/services/api';
 import { renderWithTemplate } from './useTemplateRenderer';
-import { dataUrlToBlob } from './useBatchProcessor';
 import { useAuth } from './useAuth';
 
 /**

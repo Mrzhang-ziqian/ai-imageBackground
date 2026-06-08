@@ -160,7 +160,11 @@ async def create_portal(
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """Stripe Webhook 端点 — 处理订阅事件"""
     if not STRIPE_WEBHOOK_SECRET:
-        logger.warning("Stripe Webhook Secret 未配置，跳过验签")
+        logger.error("Stripe Webhook Secret 未配置，生产环境下必须设置！")
+        # 开发环境允许，生产环境必须配置
+        if os.environ.get("ENV", "development") != "development":
+            raise HTTPException(status_code=500, detail="Webhook secret not configured")
+        logger.warning("开发环境：跳过 Stripe webhook 验签")
         body = await request.body()
         import json
         try:

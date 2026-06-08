@@ -1,7 +1,6 @@
-import { ref, reactive, computed, shallowRef, readonly } from 'vue';
-import type { BatchItem, BatchItemStatus, BatchPhase, ImageDimensions } from '@/types';
+import { ref, reactive, computed, readonly } from 'vue';
+import type { BatchItem, BatchPhase, ImageDimensions } from '@/types';
 import { uploadAndRemoveBg } from '@/services/api';
-import type { HistoryEntry } from '@/types';
 import JSZip from 'jszip';
 import { useAuth } from './useAuth';
 
@@ -315,7 +314,8 @@ export function useBatchProcessor() {
     const names = new Map<string, number>();
 
     for (const item of doneItems) {
-      const blob = item.resultBlob!;
+      if (!item.resultBlob) continue;
+      const blob = item.resultBlob;
       const baseName = item.resultFilename || `removed_bg.png`;
 
       // 处理重名：name (1).png, name (2).png

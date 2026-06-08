@@ -26,7 +26,7 @@
         <div class="card-thumbs">
           <!-- 原图缩略图 -->
           <div class="thumb-box original">
-            <div v-if="thumbState(entry.id)?.originalLoading !== false" class="thumb-shimmer" />
+            <div v-if="thumbState(entry.id)?.originalLoading !== false" class="thumb-shimmer" ></div>
             <img
               v-if="entry.originalThumb"
               :src="entry.originalThumb"
@@ -65,7 +65,7 @@
               </div>
             </template>
             <template v-else>
-              <div v-if="thumbState(entry.id)?.resultLoading !== false" class="thumb-shimmer" />
+              <div v-if="thumbState(entry.id)?.resultLoading !== false" class="thumb-shimmer" ></div>
               <img
                 v-if="entry.resultThumb"
                 :src="entry.resultThumb"

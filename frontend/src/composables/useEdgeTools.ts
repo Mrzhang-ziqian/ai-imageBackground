@@ -41,7 +41,8 @@ function getImageDataFromBlob(blob: Blob): Promise<{
     const canvas = document.createElement('canvas');
     canvas.width = img.naturalWidth;
     canvas.height = img.naturalHeight;
-    const ctx = canvas.getContext('2d')!;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Failed to get 2d context');
     ctx.drawImage(img, 0, 0);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     return { imageData, canvas, ctx };
@@ -242,8 +243,8 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
   // 设置 Canvas 尺寸
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
-  const ctx = canvas.getContext('2d')!;
-
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
   // 绘制棋盘格背景（显示透明度）
   drawCheckerboard(ctx, canvas.width, canvas.height);
 
@@ -251,7 +252,8 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
   const processedCanvas = document.createElement('canvas');
   processedCanvas.width = canvas.width;
   processedCanvas.height = canvas.height;
-  const processedCtx = processedCanvas.getContext('2d')!;
+  const processedCtx = processedCanvas.getContext('2d');
+  if (!processedCtx) return;
   processedCtx.drawImage(img, 0, 0);
 
   // 加载原始图片（用于"从原图恢复"获取原始像素）
@@ -270,7 +272,8 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
       originalPhotoCanvas = document.createElement('canvas');
       originalPhotoCanvas.width = canvas.width;
       originalPhotoCanvas.height = canvas.height;
-      originalPhotoCtx = originalPhotoCanvas.getContext('2d')!;
+      originalPhotoCtx = originalPhotoCanvas.getContext('2d');
+      if (!originalPhotoCtx) { originalPhotoCtx = null; return; }
       originalPhotoCtx.drawImage(origImg, 0, 0, canvas.width, canvas.height);
     } catch {
       // 原图加载失败，回退：恢复模式退化为撤销笔触
@@ -393,7 +396,8 @@ export async function createBrushEditor(options: BrushInitOptions): Promise<Brus
     const tmp = document.createElement('canvas');
     tmp.width = canvas.width;
     tmp.height = canvas.height;
-    const tmpCtx = tmp.getContext('2d')!;
+    const tmpCtx = tmp.getContext('2d');
+    if (!tmpCtx) return blob;
     tmpCtx.putImageData(new ImageData(merged, canvas.width, canvas.height), 0, 0);
     return canvasToBlob(tmp);
   }

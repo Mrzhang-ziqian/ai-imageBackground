@@ -77,7 +77,7 @@ class HistoryItemOut(BaseModel):
     id: int
     filename: str
     timestamp: int                                   # Unix 毫秒
-    file_hash: str | None = Field(default=None, alias="fileHash")
+    file_hash: str = Field(alias="fileHash")
     model_used: str = Field(alias="modelUsed")
     original_thumb: str = Field(alias="originalThumb")      # base64 data URL (JPEG)
     result_thumb: str = Field(alias="resultThumb")           # base64 data URL (PNG)

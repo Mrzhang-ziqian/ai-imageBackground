@@ -337,7 +337,7 @@ async function onDownloadZip(): Promise<void> {
   try {
     await props.batch.downloadAsZip();
     emit('toast', { message: `ZIP 已下载: ${props.batch.doneCount.value} 张图片`, type: 'success' });
-  } catch (err) {
+  } catch (_err) {
     emit('toast', { message: 'ZIP 打包失败，请重试', type: 'error' });
   } finally {
     zipping.value = false;

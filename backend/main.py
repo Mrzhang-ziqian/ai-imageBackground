@@ -8,6 +8,7 @@ import io
 import gc
 import os
 import re
+import struct
 import asyncio
 import logging
 import threading
@@ -218,7 +219,6 @@ def _validate_magic_bytes(raw: bytes) -> str | None:
         return 'image/jpeg'
     if len(raw) >= 12 and raw[:4] == b'RIFF' and raw[8:12] == b'WEBP':
         # T46+P1-2: 校验 WebP 文件完整性 — 损坏文件直接拒绝
-        import struct
         try:
             declared_size = struct.unpack_from('<I', raw, 4)[0]
             if declared_size + 8 != len(raw):
@@ -238,7 +238,7 @@ def _validate_magic_bytes(raw: bytes) -> str | None:
 
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc: HTTPException):
+async def http_exception_handler(request: Request, exc: HTTPException):
     """确保 HTTPException 也输出到日志。生产环境不暴露 type 字段。"""
     logger.warning(f"HTTP {exc.status_code} [{request.method} {request.url.path}]: {exc.detail}")
     body = {"detail": str(exc.detail)}
@@ -248,7 +248,7 @@ async def http_exception_handler(request, exc: HTTPException):
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc: Exception):
     """捕获所有未处理异常（含 asyncio.CancelledError），输出完整堆栈并返回 JSON 错误。"""
     if isinstance(exc, asyncio.CancelledError):
         logger.warning(f"请求被取消 [{request.method} {request.url.path}]")

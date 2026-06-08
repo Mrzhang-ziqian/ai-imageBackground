@@ -44,215 +44,215 @@
 
         <!-- 工具内容（仅 Pro 可见） -->
         <template v-else>
-        <!-- Tab 切换 -->
-        <div class="tabs" role="tablist" aria-label="边缘编辑工具">
-          <button
-            v-for="tab in tabs"
-            :key="tab.key"
-            class="tab-btn"
-            :class="{ active: activeTab === tab.key }"
-            @click="activeTab = tab.key"
-            role="tab"
-            :aria-selected="activeTab === tab.key"
-            :tabindex="activeTab === tab.key ? 0 : -1"
-          >
-            <span class="tab-icon" v-html="tab.icon" aria-hidden="true"></span>
-            {{ tab.label }}
-          </button>
-        </div>
-
-        <!-- ======== 羽化面板 ======== -->
-        <div v-if="activeTab === 'feather'" class="tool-section">
-          <p class="tool-desc">柔化抠图边缘，使主体与背景过渡更自然</p>
-          <div class="slider-row">
-            <label class="slider-label">羽化半径</label>
-            <span class="slider-value">{{ featherRadius }}px</span>
-          </div>
-          <input
-            v-model.number="featherRadius"
-            type="range"
-            min="0"
-            max="20"
-            step="0.5"
-            class="slider"
-            aria-label="羽化半径滑块"
-          />
-          <div class="slider-ticks">
-            <span>0</span><span>5</span><span>10</span><span>15</span><span>20</span>
-          </div>
-          <div class="btn-row">
+          <!-- Tab 切换 -->
+          <div class="tabs" role="tablist" aria-label="边缘编辑工具">
             <button
-              class="btn-apply"
-              :disabled="featherRadius === 0 || isProcessing"
-              @click="handleApplyFeather"
+              v-for="tab in tabs"
+              :key="tab.key"
+              class="tab-btn"
+              :class="{ active: activeTab === tab.key }"
+              @click="activeTab = tab.key"
+              role="tab"
+              :aria-selected="activeTab === tab.key"
+              :tabindex="activeTab === tab.key ? 0 : -1"
             >
-              <svg v-if="isProcessing" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-              </svg>
-              {{ isProcessing ? '处理中...' : '应用羽化' }}
-            </button>
-            <button
-              v-if="hasEdgeEdit"
-              class="btn-undo"
-              @click="$emit('resetEdge')"
-            >
-              撤销修改
-            </button>
-          </div>
-        </div>
-
-        <!-- ======== 平滑面板 ======== -->
-        <div v-if="activeTab === 'smooth'" class="tool-section">
-          <p class="tool-desc">填补边缘小空洞，平滑锯齿状边缘</p>
-          <div class="slider-row">
-            <label class="slider-label">平滑强度</label>
-            <span class="slider-value">{{ smoothStrength }}</span>
-          </div>
-          <input
-            v-model.number="smoothStrength"
-            type="range"
-            min="1"
-            max="10"
-            step="1"
-            class="slider"
-            aria-label="边缘平滑强度滑块"
-          />
-          <div class="slider-ticks">
-            <span>1</span><span>3</span><span>5</span><span>7</span><span>10</span>
-          </div>
-          <div class="btn-row">
-            <button
-              class="btn-apply"
-              :disabled="isProcessing"
-              @click="handleApplySmooth"
-            >
-              <svg v-if="isProcessing" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-              </svg>
-              {{ isProcessing ? '处理中...' : '应用平滑' }}
-            </button>
-            <button
-              v-if="hasEdgeEdit"
-              class="btn-undo"
-              @click="$emit('resetEdge')"
-            >
-              撤销修改
-            </button>
-          </div>
-        </div>
-
-        <!-- ======== 手动画笔修复 ======== -->
-        <div v-if="activeTab === 'brush'" class="tool-section">
-          <p class="tool-desc">手动擦除多余区域或恢复被误删的部分</p>
-
-          <!-- 模式切换 -->
-          <div class="brush-modes">
-            <button
-              class="mode-btn"
-              :class="{ active: brushMode === 'erase' }"
-              @click="brushMode = 'erase'"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-              </svg>
-              擦除
-            </button>
-            <button
-              class="mode-btn"
-              :class="{ active: brushMode === 'restore' }"
-              @click="brushMode = 'restore'"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-              </svg>
-              <span v-if="props.originalUrl">从原图恢复</span>
-              <span v-else>恢复</span>
+              <span class="tab-icon" v-html="tab.icon" aria-hidden="true"></span>
+              {{ tab.label }}
             </button>
           </div>
 
-          <!-- 原图参考叠加层开关（仅当有原图时显示） -->
-          <label v-if="props.originalUrl" class="overlay-toggle">
-            <input type="checkbox" v-model="showOriginalOverlay" />
-            <span class="toggle-label">显示原图参考</span>
-          </label>
-
-          <!-- 笔刷大小 -->
-          <div class="slider-row">
-            <label class="slider-label">笔刷大小</label>
-            <span class="slider-value">{{ brushSize }}px</span>
-          </div>
-          <input
-            v-model.number="brushSize"
-            type="range"
-            min="2"
-            max="80"
-            step="1"
-            class="slider"
-            aria-label="笔刷大小滑块"
-          />
-
-          <!-- 画笔 Canvas -->
-          <div
-            class="brush-canvas-wrap"
-            :style="{ maxWidth: canvasDisplayWidth + 'px' }"
-          >
-            <canvas
-              ref="brushCanvasRef"
-              class="brush-canvas"
-              :class="{ 'cursor-erase': brushMode === 'erase', 'cursor-restore': brushMode === 'restore', 'is-drawing': isDrawing }"
-              @pointerdown="onPointerDown"
-              @pointermove="onPointerMove"
-              @pointerup="onPointerUp"
-              @pointerleave="onPointerUp"
-              @pointercancel="onPointerUp"
+          <!-- ======== 羽化面板 ======== -->
+          <div v-if="activeTab === 'feather'" class="tool-section">
+            <p class="tool-desc">柔化抠图边缘，使主体与背景过渡更自然</p>
+            <div class="slider-row">
+              <label class="slider-label">羽化半径</label>
+              <span class="slider-value">{{ featherRadius }}px</span>
+            </div>
+            <input
+              v-model.number="featherRadius"
+              type="range"
+              min="0"
+              max="20"
+              step="0.5"
+              class="slider"
+              aria-label="羽化半径滑块"
             />
-            <!-- 原图参考叠加层 -->
-            <img
-              v-if="showOriginalOverlay && props.originalUrl"
-              :src="props.originalUrl"
-              class="original-overlay"
-              alt="原图参考"
-            />
-            <!-- 画笔预览圆圈 -->
-            <div
-              v-if="canvasReady && !isDrawing"
-              class="brush-cursor-preview"
-              :style="cursorPreviewStyle"
-            >
-              <div class="cursor-dot" :class="brushMode"></div>
+            <div class="slider-ticks">
+              <span>0</span><span>5</span><span>10</span><span>15</span><span>20</span>
+            </div>
+            <div class="btn-row">
+              <button
+                class="btn-apply"
+                :disabled="featherRadius === 0 || isProcessing"
+                @click="handleApplyFeather"
+              >
+                <svg v-if="isProcessing" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                {{ isProcessing ? '处理中...' : '应用羽化' }}
+              </button>
+              <button
+                v-if="hasEdgeEdit"
+                class="btn-undo"
+                @click="$emit('resetEdge')"
+              >
+                撤销修改
+              </button>
             </div>
           </div>
 
-          <!-- 笔刷操作按钮 -->
-          <div class="btn-row brush-actions">
-            <button
-              class="btn-apply btn-sm"
-              :disabled="!brushEditor || brushEditor.undoCount === 0"
-              @click="handleBrushUndo"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-              </svg>
-              撤销 ({{ brushEditor?.undoCount ?? 0 }})
-            </button>
-            <button
-              class="btn-apply btn-sm btn-reset-brush"
-              @click="handleBrushReset"
-            >
-              重置
-            </button>
-            <button
-              class="btn-apply"
-              :disabled="!brushEditor || isProcessing"
-              @click="handleApplyBrush"
-            >
-              <svg v-if="isProcessing" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-              </svg>
-              应用修改
-            </button>
+          <!-- ======== 平滑面板 ======== -->
+          <div v-if="activeTab === 'smooth'" class="tool-section">
+            <p class="tool-desc">填补边缘小空洞，平滑锯齿状边缘</p>
+            <div class="slider-row">
+              <label class="slider-label">平滑强度</label>
+              <span class="slider-value">{{ smoothStrength }}</span>
+            </div>
+            <input
+              v-model.number="smoothStrength"
+              type="range"
+              min="1"
+              max="10"
+              step="1"
+              class="slider"
+              aria-label="边缘平滑强度滑块"
+            />
+            <div class="slider-ticks">
+              <span>1</span><span>3</span><span>5</span><span>7</span><span>10</span>
+            </div>
+            <div class="btn-row">
+              <button
+                class="btn-apply"
+                :disabled="isProcessing"
+                @click="handleApplySmooth"
+              >
+                <svg v-if="isProcessing" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                {{ isProcessing ? '处理中...' : '应用平滑' }}
+              </button>
+              <button
+                v-if="hasEdgeEdit"
+                class="btn-undo"
+                @click="$emit('resetEdge')"
+              >
+                撤销修改
+              </button>
+            </div>
           </div>
-        </div>
+
+          <!-- ======== 手动画笔修复 ======== -->
+          <div v-if="activeTab === 'brush'" class="tool-section">
+            <p class="tool-desc">手动擦除多余区域或恢复被误删的部分</p>
+
+            <!-- 模式切换 -->
+            <div class="brush-modes">
+              <button
+                class="mode-btn"
+                :class="{ active: brushMode === 'erase' }"
+                @click="brushMode = 'erase'"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                </svg>
+                擦除
+              </button>
+              <button
+                class="mode-btn"
+                :class="{ active: brushMode === 'restore' }"
+                @click="brushMode = 'restore'"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+                <span v-if="props.originalUrl">从原图恢复</span>
+                <span v-else>恢复</span>
+              </button>
+            </div>
+
+            <!-- 原图参考叠加层开关（仅当有原图时显示） -->
+            <label v-if="props.originalUrl" class="overlay-toggle">
+              <input type="checkbox" v-model="showOriginalOverlay" />
+              <span class="toggle-label">显示原图参考</span>
+            </label>
+
+            <!-- 笔刷大小 -->
+            <div class="slider-row">
+              <label class="slider-label">笔刷大小</label>
+              <span class="slider-value">{{ brushSize }}px</span>
+            </div>
+            <input
+              v-model.number="brushSize"
+              type="range"
+              min="2"
+              max="80"
+              step="1"
+              class="slider"
+              aria-label="笔刷大小滑块"
+            />
+
+            <!-- 画笔 Canvas -->
+            <div
+              class="brush-canvas-wrap"
+              :style="{ maxWidth: canvasDisplayWidth + 'px' }"
+            >
+              <canvas
+                ref="brushCanvasRef"
+                class="brush-canvas"
+                :class="{ 'cursor-erase': brushMode === 'erase', 'cursor-restore': brushMode === 'restore', 'is-drawing': isDrawing }"
+                @pointerdown="onPointerDown"
+                @pointermove="onPointerMove"
+                @pointerup="onPointerUp"
+                @pointerleave="onPointerUp"
+                @pointercancel="onPointerUp"
+              ></canvas>
+              <!-- 原图参考叠加层 -->
+              <img
+                v-if="showOriginalOverlay && props.originalUrl"
+                :src="props.originalUrl"
+                class="original-overlay"
+                alt="原图参考"
+              />
+              <!-- 画笔预览圆圈 -->
+              <div
+                v-if="canvasReady && !isDrawing"
+                class="brush-cursor-preview"
+                :style="cursorPreviewStyle"
+              >
+                <div class="cursor-dot" :class="brushMode"></div>
+              </div>
+            </div>
+
+            <!-- 笔刷操作按钮 -->
+            <div class="btn-row brush-actions">
+              <button
+                class="btn-apply btn-sm"
+                :disabled="!brushEditor || brushEditor.undoCount === 0"
+                @click="handleBrushUndo"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+                撤销 ({{ brushEditor?.undoCount ?? 0 }})
+              </button>
+              <button
+                class="btn-apply btn-sm btn-reset-brush"
+                @click="handleBrushReset"
+              >
+                重置
+              </button>
+              <button
+                class="btn-apply"
+                :disabled="!brushEditor || isProcessing"
+                @click="handleApplyBrush"
+              >
+                <svg v-if="isProcessing" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+                应用修改
+              </button>
+            </div>
+          </div>
         </template>
       </div>
     </Transition>
@@ -380,7 +380,7 @@ async function handleApplyFeather(): Promise<void> {
     emit('update:resultBlob', result);
     hasEdgeEdit.value = true;
     emit('toast', { message: '羽化已应用', type: 'success' });
-  } catch (err) {
+  } catch (_err) {
     emit('toast', { message: '羽化处理失败', type: 'error' });
   } finally {
     isProcessing.value = false;
@@ -396,7 +396,7 @@ async function handleApplySmooth(): Promise<void> {
     emit('update:resultBlob', result);
     hasEdgeEdit.value = true;
     emit('toast', { message: '平滑已应用', type: 'success' });
-  } catch (err) {
+  } catch (_err) {
     emit('toast', { message: '平滑处理失败', type: 'error' });
   } finally {
     isProcessing.value = false;

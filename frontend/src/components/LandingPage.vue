@@ -135,7 +135,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useToast } from '@/composables/useToast'
 import ToastMessage from './ToastMessage.vue'
 
-defineEmits<{ openAuth: [] }>()
+defineEmits<{ 'open-auth': [] }>()
 
 const { toast: toastState, showToast } = useToast()
 
@@ -197,7 +197,7 @@ function onTouchMove(e: TouchEvent) {
   if (!dragging) return
   updateSlider(e.touches[0].clientX)
 }
-function startDrag(e: MouseEvent | TouchEvent) {
+function startDrag(_e: MouseEvent | TouchEvent) {
   dragging = true
   if (autoPlayTimer) clearTimeout(autoPlayTimer)
 }

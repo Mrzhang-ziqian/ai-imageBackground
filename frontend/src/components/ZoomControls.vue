@@ -5,14 +5,18 @@
       :disabled="zoom.scale.value < 1.25"
       @click="zoom.zoomTo(zoom.scale.value - 0.25)"
       title="缩小"
-    >−</button>
+    >
+      −
+    </button>
     <span class="zoom-label">{{ zoom.zoomPercent.value }}</span>
     <button
       class="zoom-btn"
       :disabled="zoom.scale.value >= 4"
       @click="zoom.zoomTo(zoom.scale.value + 0.25)"
       title="放大"
-    >+</button>
+    >
+      +
+    </button>
     <button class="zoom-btn zoom-reset" @click="zoom.resetZoom()" title="重置">1:1</button>
   </div>
 </template>

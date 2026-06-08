@@ -41,7 +41,7 @@ import { useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useQuota } from '@/composables/useQuota'
 
-defineEmits<{ openAuth: [] }>()
+defineEmits<{ 'open-auth': [] }>()
 
 const router = useRouter()
 const auth = useAuth()
