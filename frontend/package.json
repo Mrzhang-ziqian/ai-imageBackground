@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "type-check": "vue-tsc -b",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.ts,.tsx --fix",
+    "lint:check": "eslint . --ext .vue,.ts,.tsx"
   },
   "dependencies": {
     "idb-keyval": "^6.2.4",
