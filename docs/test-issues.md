@@ -1,6 +1,7 @@
 # 测试发现的问题与优化建议
 
 > 记录于 2026-06-08 全栈测试阶段
+> 第二轮深度测试：2026-06-08（资深测试工程师审查）
 > 最终清理完成于 2026-06-08，数据库仅保留 admin@admin.com 和 test@test.com 用户
 
 ---
@@ -19,85 +20,166 @@
 
 ---
 
-## 🟡 中等 Bug
+## 🟡 中等 Bug（已修复）
 
-### 3. auth.py: 登录后配额刷新未 commit（已修复）
+### 3. auth.py: 登录后配额刷新未 commit
 - **位置**: `backend/auth.py` 第 131 行
-- **现象**: `login()` 函数中调用 `check_and_reset_quota(user, db)` 使用 `flush()` 而非 `commit()`。登录后立即调用 `/me` 会触发另一个 `check_and_reset_quota`，但如果 `/me` 未调用，配额可能未持久化
 - **修复**: 在 `login()` 和 `/me` 中调用 `check_and_reset_quota` 后添加 `await db.commit()`
 
-### 4. EdgeToolsPanel.vue: CSS 选择器引用了不存在的元素（已修复）
+### 4. EdgeToolsPanel.vue: CSS 选择器引用了不存在的元素
 - **位置**: `frontend/src/components/EdgeToolsPanel.vue` 第 893-895 行
-- **现象**: `.panel-header h4` 选择器无对应 `<h4>` 元素（实际使用 `.header-title` 类名）
 - **修复**: 删除无效 CSS 规则
 
-### 5. subscription.py: 降级时未清理 stripe_customer_id
-- **位置**: `backend/subscription.py` `_handle_subscription_deleted()`
-- **现象**: 订阅取消时 `stripe_subscription_id` 被设为 None，但 `stripe_customer_id` 保留。如果用户重新订阅，旧的 customer_id 可能导致 Stripe 冲突
-- **建议**: 考虑是否需要在降级时保留或清理 `stripe_customer_id`
+### 5. ProPlanModal.vue: 缺少 div 结束标签导致编译 500
+- **位置**: `frontend/src/components/ProPlanModal.vue` 模板部分
+- **修复**: 添加缺失的 `</div>` 闭合标签
 
-### 6. subscription.py: past_due 状态可能导致 plan 不一致
-- **位置**: `backend/subscription.py` `_handle_subscription_updated()`
-- **现象**: 当 `status == "past_due"` 时，代码只更新 `subscription_status` 但保留了 `plan = "pro"`。这意味着用户可以在不付费的情况下继续享受 Pro 功能
-- **建议**: past_due 时考虑设置宽限期（如 7 天），过期后自动降级
+### 6. history.py: `save_history_entry_blocked` 重复导入 hashlib
+- **位置**: `backend/history.py` 第 219 行
+- **修复**: 删除局部重复 `import hashlib as hlib`，使用顶部已导入的 `hashlib`
 
----
+### 7. main.py: 异常处理器缺少类型注解
+- **位置**: `backend/main.py` 第 241-251 行
+- **修复**: 添加 `request: Request` 和 `exc: Exception` 类型注解
 
-## 🟠 优化建议
+### 8. database.py ↔ auth.py: 循环依赖
+- **位置**: `backend/database.py` 从 `auth` 导入 `hash_password`
+- **修复**: 提取 `hash_password`/`verify_password` 到新 `utils.py` 模块，打破循环依赖
 
-### 7. 历史记录查询性能优化
-- **位置**: `backend/history.py` `list_history()`
-- **现象**: 每次查询返回所有记录的 base64 缩略图嵌入在 JSON 中，用户记录多时响应体可能很大（>1MB）
-- **建议**: 考虑分页支持或使用缩略图 URL 替代 base64 嵌入
+### 9. models.py: History.file_hash nullable=True 但总是填充
+- **位置**: `backend/models.py` 第 57 行
+- **修复**: 改为 `nullable=False`
 
-### 8. 前端 API 错误处理不一致
-- **位置**: `frontend/src/services/api.ts`
-- **现象**: `uploadAndRemoveBg` 使用 XHR，`authApi` 使用 fetch，`subscriptionApi` 也使用 fetch，但错误处理逻辑各不相同
-- **建议**: 统一错误处理中间件，减少重复代码
+### 10. subscription.py: Webhook 未配置 secret 时安全风险
+- **位置**: `backend/subscription.py` 第 162 行
+- **修复**: 非开发环境（ENV != development）时拒绝未配置 secret 的请求
 
-### 9. ProPlanModal: 无支付成功后的计划刷新
-- **位置**: `frontend/src/components/ProPlanModal.vue`
-- **现象**: `handleCheckout` 直接跳转到 Stripe Checkout 页面，依赖 `WorkspacePage` 的 `?checkout=success` 回调刷新用户状态。如果用户在新标签页完成支付，原页面可能不会刷新
-- **建议**: 添加 `visibilitychange` 事件监听，在用户切换回标签页时自动刷新用户信息
+### 11. cleanup_test_data.py: 使用 os.path 而非 pathlib
+- **位置**: `backend/cleanup_test_data.py`
+- **修复**: 统一使用 `Path` / `pathlib`
 
-### 10. useQuota: 与 auth store 的配额同步存在延迟
-- **位置**: `frontend/src/composables/useQuota.ts`
-- **现象**: `afterSuccessfulRequest()` 调用 `fetchMe()` 刷新配额，但存在网络延迟。在此期间 `quotaLeft` 显示的是旧值
-- **建议**: 在 `afterSuccessfulRequest()` 中乐观更新本地配额计数，网络请求作为校验
-
-### 11. _read_thumb_async 死代码（已修复）
-- **位置**: `backend/history.py` 第 73-81 行
-- **现象**: `_read_thumb_async()` 函数已定义但未被任何地方调用
-- **修复**: 已删除该死代码
-
-### 12. 缺少输入验证的 Pro 功能提示
-- **位置**: 前端多处
-- **现象**: 当 Pro 门控阻止功能时，错误提示不够明确。例如批量处理超过 1 张时的错误信息
-- **建议**: 添加更友好的"升级 Pro 解锁"提示，带有直接跳转 ProPlanModal 的按钮
+### 12. 前端 ESLint：0 errors, 0 warnings
+- **修复内容**:
+  - 迁移 `.eslintrc.cjs` 到 ESLint v10 flat config (`eslint.config.js`)
+  - 修复全部 655 个 ESLint 问题（未使用导入、non-null assertion、html-closing-bracket-spacing、no-undef、attributes-order 等）
+  - 添加浏览器全局变量声明
 
 ---
 
-## 🔵 架构建议
+## 🟠 新发现 — 第二轮深度测试
+
+### 17. 【高】DraftDetailPage: handleConfirm 先跳转后删除，失败时草稿残留
+- **位置**: `frontend/src/pages/DraftDetailPage.vue` 第 263-283 行
+- **现象**: `handleConfirm` 中先 `router.replace('/workspace')` 跳转，再 `await drafts.remove(draftId)`。如果删除失败，用户已离开页面且无法重试，草稿永久残留在 IndexedDB 中
+- **建议**: 改为先删除草稿，成功后再跳转
+
+### 18. 【高】WorkspacePage: handleHistoryRestore 中 Object URL 泄漏
+- **位置**: `frontend/src/pages/WorkspacePage.vue` 第 714 行
+- **现象**: `URL.createObjectURL(resultBlob)` 创建的 URL 未被 `trackUrl()` 追踪，组件卸载时不会自动回收，造成内存泄漏
+- **建议**: 调用 `trackUrl(resultObjUrl)` 确保 URL 被回收
+
+### 19. 【高】history store: remove/clearAll 静默失败
+- **位置**: `frontend/src/stores/history.ts` 第 33-50 行
+- **现象**: 删除历史记录 API 失败时，catch 块完全为空（静默失败）。前端状态已乐观更新但后端未变化，刷新后数据恢复旧值，用户困惑
+- **建议**: 使用乐观更新 + 失败回滚模式，或至少用 toast 通知用户失败
+
+### 20. 【高】路由守卫：初始化未完成时误判登录状态
+- **位置**: `frontend/src/router/index.ts` 第 47-60 行
+- **现象**: `router.beforeEach` 直接检查 `auth.token`/`auth.user`，但应用刚加载时 `auth.fetchMe()` 可能尚未完成，此时 `auth.user` 为 null，即使 token 有效也被判定为未登录并重定向
+- **建议**: 检查 `auth.initialized` 状态，未完成初始化时等待
+
+### 21. 【中】auth store: quotaLeft 返回 Infinity 而非 null
+- **位置**: `frontend/src/stores/auth.ts` 第 23-28 行
+- **现象**: 未登录时 `quotaLeft` 返回 `Infinity`，而 `useQuota` 中返回 `null`。两处不一致可能导致 UI 判断异常
+- **建议**: 统一为 `null`
+
+### 22. 【中】ProPlanModal: 管理订阅失败时错误显示位置错误
+- **位置**: `frontend/src/components/ProPlanModal.vue` 第 147 行
+- **现象**: 管理订阅（portal）失败时，错误信息写入 `checkoutError`，但该状态只在 CTA 区域显示，而管理订阅按钮在"已是 Pro 用户"区域，用户看不到错误
+- **建议**: 为 portal 操作添加独立的 `portalError` 状态
+
+### 23. 【中】ui store: Toast 定时器在组件卸载时未清理
+- **位置**: `frontend/src/stores/ui.ts` 第 11, 16-19 行
+- **现象**: `toastTimer` 是模块级变量，`showToast` 设置的 `setTimeout` 在组件卸载后仍可能触发
+- **建议**: 在 store 的 `$dispose` 或使用 `watchEffect` 自动管理
+
+### 24. 【中】useToast 与 useUiStore 的 toast 功能重复
+- **位置**: `frontend/src/composables/useToast.ts`
+- **现象**: 存在组件级 `useToast` 和全局 `useUiStore` 两套 toast 系统，调用方可能混淆
+- **建议**: 明确两套 toast 的用途或废弃 `useToast`
+
+### 25. 【中】DraftDetailPage: onUnmounted 中先 releaseAllUrls 再 remover.reset
+- **位置**: `frontend/src/pages/DraftDetailPage.vue` 第 257-260 行
+- **现象**: `releaseAllUrls()` 回收 URL 后再调用 `remover.reset()`，后者可能仍引用已回收的 URL
+- **建议**: 调换顺序：先 `remover.reset()` 再 `releaseAllUrls()`
+
+### 26. 【中】WorkspacePage: draftIdCounter 在 HMR 时可能重置
+- **位置**: `frontend/src/pages/WorkspacePage.vue` 第 577 行
+- **现象**: 模块级变量 `draftIdCounter` 在 Vite HMR 时会被重置为 0，可能导致 ID 冲突
+- **建议**: 使用 `Date.now()` + 随机数生成唯一 ID
+
+### 27. 【中】BackgroundColorPicker: CUSTOM_FALLBACK_HEX 硬编码
+- **位置**: `frontend/src/components/BackgroundColorPicker.vue` 第 159 行
+- **现象**: `#6366f1` 硬编码，注释却说"使用 CSS 变量引用，保持与主题一致"
+- **建议**: 使用 CSS 变量 `var(--color-primary)` 或从主题导入
+
+### 28. 【中】BackgroundTemplatePicker: 缩略图生成 loading 标志可能不重置
+- **位置**: `frontend/src/components/BackgroundTemplatePicker.vue` 第 103-119 行
+- **现象**: 循环中发生异常时 `loading` 保持 true，UI 永远显示加载中
+- **建议**: 将 `loading = false` 放在 finally 块中
+
+### 29. 【中】api.ts: XHR 未设置 timeout
+- **位置**: `frontend/src/services/api.ts` 第 181-191 行
+- **现象**: 没有设置 `xhr.timeout`，后端无响应时用户看到通用错误而非"超时"
+- **建议**: 设置 `xhr.timeout` 并监听 `xhr.ontimeout`
+
+### 30. 【低】WorkspacePage: handleLargeImageResize 文件名处理边界情况
+- **位置**: `frontend/src/pages/WorkspacePage.vue` 第 600 行
+- **现象**: 无扩展名的文件（如 "image"）重命名逻辑不会添加 `_resized` 后缀
+- **建议**: 使用更健壮的文件名处理
+
+### 31. 【低】DraftBoxPage: URL.revokeObjectURL 在 a.click() 后立即调用
+- **位置**: `frontend/src/pages/DraftBoxPage.vue` 第 108-111 行
+- **现象**: 立即回收可能导致部分浏览器下载未开始
+- **建议**: 使用 `setTimeout(() => URL.revokeObjectURL(url), 1000)` 延迟回收
+
+### 32. 【低】UploadZone: 只阻止 drop 未阻止 dragover
+- **位置**: `frontend/src/components/UploadZone.vue` 第 113-123 行
+- **现象**: 全局 drop 阻止了浏览器默认行为，但未阻止 dragover，浏览器仍显示"禁止"光标
+- **建议**: 同时阻止全局 dragover 事件
+
+### 33. 【低】SessionFilmstrip: 缩略图加载失败后显示空白
+- **位置**: `frontend/src/components/SessionFilmstrip.vue` 第 49-55 行
+- **现象**: `onThumbError` 隐藏 img 但不显示备用内容
+- **建议**: 加载失败时通过 emit 通知父组件置空 thumbUrl
+
+### 34. 【低】errorHumanizer: 多字节字符截断可能产生乱码
+- **位置**: `frontend/src/utils/errorHumanizer.ts` 第 87-89 行
+- **现象**: `slice(0, 117)` 可能截断 emoji 等代理对字符
+- **建议**: 使用 `Array.from(rawMessage).slice(0, 117).join('')`
+
+---
+
+## 🟠 持续关注（架构级，暂不修复）
 
 ### 13. SQLite 不适合生产级并发
-- **现象**: SQLite 的写锁限制可能导致高并发下配额扣减失败。虽然代码中有 `WHERE quota_used < quota_daily` 的原子保护，但 SQLite 的串行化特性仍是瓶颈
 - **建议**: 用户量增大后考虑迁移到 PostgreSQL
 
 ### 14. JWT_SECRET 随机生成的安全隐患
-- **位置**: `backend/auth.py` 第 19-28 行
-- **现象**: 未设置 `JWT_SECRET` 时使用随机密钥，服务重启后所有 token 失效
 - **建议**: 添加更明确的启动检查，在非开发环境下强制要求设置 JWT_SECRET
 
 ### 15. 历史文件存储无清理策略
-- **现象**: `data/history/` 下的文件会持续增长，没有定期清理机制
-- **建议**: 添加定时任务清理超过 N 天的历史文件，或基于用户配额自动清理
+- **建议**: 添加定时任务清理超过 N 天的历史文件
 
----
+### 35. 前端 API 错误处理不一致
+- **位置**: `frontend/src/services/api.ts`
+- **建议**: 统一错误处理中间件，减少重复代码
 
-### 16. ProPlanModal.vue: 缺少 div 结束标签导致编译 500（已修复）
-- **位置**: `frontend/src/components/ProPlanModal.vue` 模板部分
-- **现象**: `modal-overlay` div 缺少闭合标签，Vite 编译时返回 500，导致 WorkspacePage 懒加载失败，整个工作台无法渲染
-- **修复**: 添加缺失的 `</div>` 闭合标签
+### 36. ProPlanModal: 无支付成功后的计划刷新
+- **建议**: 添加 `visibilitychange` 事件监听
+
+### 37. useQuota: 与 auth store 的配额同步存在延迟
+- **建议**: 在 `afterSuccessfulRequest()` 中乐观更新本地配额计数
 
 ---
 
@@ -116,3 +198,6 @@
 - ✅ 前端注册流程（含昵称字段）正常
 - ✅ 工作台路由守卫（需登录）正常
 - ✅ Vite 开发服务器 + API 代理正常
+- ✅ ESLint: 0 errors, 0 warnings（全项目通过）
+- ✅ 后端所有 .py 文件编译通过
+- ✅ 密码工具函数已提取到 utils.py，解决循环依赖
