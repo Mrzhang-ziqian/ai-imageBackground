@@ -51,6 +51,7 @@
             <span v-if="!portalLoading">管理订阅</span>
             <span v-else class="mini-spinner"></span>
           </button>
+          <p v-if="portalError" class="cta-error">{{ portalError }}</p>
         </div>
 
         <!-- CTA：升级按钮 -->
@@ -84,11 +85,13 @@ const isPro = computed(() => userPlan.value === 'pro');
 const checkoutLoading = ref(false);
 const checkoutError = ref('');
 const portalLoading = ref(false);
+const portalError = ref('');
 
 // 重置状态
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     checkoutError.value = '';
+    portalError.value = '';
     checkoutLoading.value = false;
     portalLoading.value = false;
   }
@@ -135,16 +138,17 @@ async function handleCheckout(): Promise<void> {
 
 async function handleManageSubscription(): Promise<void> {
   portalLoading.value = true;
+  portalError.value = null;
   try {
     if (!token.value) {
-      checkoutError.value = '请先登录';
+      portalError.value = '请先登录';
       return;
     }
     const res = await subscriptionApi.createPortal(token.value);
     window.location.href = res.portal_url;
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : '创建管理页面失败';
-    checkoutError.value = msg;
+    portalError.value = msg;
   } finally {
     portalLoading.value = false;
   }

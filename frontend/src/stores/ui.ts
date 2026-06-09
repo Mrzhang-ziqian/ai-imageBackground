@@ -1,7 +1,10 @@
 /**
  * UI 全局状态 — Toast 通知 / 批量进度浮窗 / 全局弹窗
+ *
+ * 注意：此 store 提供全局 toast，适用于跨组件的通知。
+ * 组件内部只需局部 toast 时，可使用 composables/useToast.ts。
  */
-import { ref, readonly } from 'vue';
+import { ref, readonly, onUnmounted } from 'vue';
 import { defineStore } from 'pinia';
 import type { ToastOptions } from '@/types';
 
@@ -24,6 +27,12 @@ export const useUiStore = defineStore('ui', () => {
     toast.value = null;
     toastTimer = null;
   }
+
+  // 组件卸载时清理定时器，避免内存泄漏
+  onUnmounted(() => {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = null;
+  });
 
   // ---- 批量进度浮窗 ----
   const batchProgress = ref<{

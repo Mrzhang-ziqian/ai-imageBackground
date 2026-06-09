@@ -84,8 +84,10 @@ export function humanizeError(rawMessage: string): string {
   }
 
   // 没有匹配到 → 保留原始消息但截断过长内容
+  // 使用 Array.from 安全处理多字节字符（emoji、代理对等）
   if (rawMessage.length > 120) {
-    return rawMessage.slice(0, 117) + '...';
+    const chars = Array.from(rawMessage);
+    return chars.slice(0, 117).join('') + '...';
   }
   return rawMessage;
 }

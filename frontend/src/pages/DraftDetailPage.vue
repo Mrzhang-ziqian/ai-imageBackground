@@ -255,8 +255,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  releaseAllUrls();
   remover.reset();
+  releaseAllUrls();
 });
 
 /** 确认完成 → 删除草稿 → 返回工作台（携带 confirmed 参数触发历史刷新） */
@@ -268,10 +268,10 @@ async function handleConfirm(): Promise<void> {
     // 同步配额
     await quota.syncFromServer();
     hasUnsavedEdits.value = false;
-    ui.showToast({ message: '已确认完成，保存到处理历史', type: 'success' });
-    // K6: 先跳转再删草稿（避免 router 失败导致草稿永久丢失）
-    router.replace({ path: '/workspace', query: { confirmed: '1' } });
+    // K6: 先删草稿，成功后再跳转（避免删除失败时用户已离开页面无法重试）
     await drafts.remove(draftId);
+    ui.showToast({ message: '已确认完成，保存到处理历史', type: 'success' });
+    router.replace({ path: '/workspace', query: { confirmed: '1' } });
   } catch (err) {
     if (import.meta.env.DEV) {
       console.error('Confirm error:', err);

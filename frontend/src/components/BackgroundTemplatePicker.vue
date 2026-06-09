@@ -105,17 +105,19 @@ async function generateThumbnails(): Promise<void> {
   loading.value = true;
   const results: Record<string, string> = {};
 
-  for (const tpl of BACKGROUND_TEMPLATES) {
-    try {
-      const dataUrl = await renderTemplateThumbnail(props.subjectBlob, tpl, 120);
-      results[tpl.id] = dataUrl;
-    } catch {
-      // 缩略图生成失败则使用 CSS 预览
+  try {
+    for (const tpl of BACKGROUND_TEMPLATES) {
+      try {
+        const dataUrl = await renderTemplateThumbnail(props.subjectBlob, tpl, 120);
+        results[tpl.id] = dataUrl;
+      } catch {
+        // 缩略图生成失败则使用 CSS 预览
+      }
     }
+    thumbnails.value = results;
+  } finally {
+    loading.value = false;
   }
-
-  thumbnails.value = results;
-  loading.value = false;
 }
 
 watch(

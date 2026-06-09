@@ -21,7 +21,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value && !!user.value)
   const userPlan = computed(() => user.value?.plan ?? 'free')
   const quotaLeft = computed(() => {
-    if (!user.value) return Infinity
+    if (!user.value) return null
     const daily = user.value.quota_daily ?? 5
     const used = user.value.quota_used ?? 0
     return Math.max(0, daily - used)

@@ -108,7 +108,8 @@ async function handleDownload(draft: Draft): Promise<void> {
   a.href = URL.createObjectURL(blob);
   a.download = draft.filename;
   a.click();
-  URL.revokeObjectURL(a.href);
+  // 延迟回收，确保部分浏览器下载已开始
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 async function handleDelete(id: string): Promise<void> {

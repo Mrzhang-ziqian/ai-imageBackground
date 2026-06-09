@@ -49,8 +49,22 @@ defineEmits<{
 function onThumbError(e: Event): void {
   const img = e.target as HTMLImageElement;
   img.style.display = 'none';
-  if (img.parentElement) {
-    img.parentElement.classList.add('error');
+  // 显示备用占位符内容
+  const container = img.parentElement;
+  if (container) {
+    container.classList.add('error');
+    // 确保备用内容可见（替换 img 为占位图标）
+    const placeholder = container.querySelector('.filmstrip-placeholder');
+    if (!placeholder) {
+      const div = document.createElement('div');
+      div.className = 'filmstrip-placeholder';
+      div.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="#9CA3AF" stroke-width="1"/>
+        <circle cx="5" cy="6" r="1.5" fill="#9CA3AF"/>
+        <path d="M1.5 12l3.5-3 2 2 3-3.5 4.5 4.5" stroke="#9CA3AF" stroke-width="1" stroke-linejoin="round"/>
+      </svg>`;
+      container.appendChild(div);
+    }
   }
 }
 </script>

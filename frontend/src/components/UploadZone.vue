@@ -109,16 +109,18 @@ function handleFiles(fileList: FileList | null): void {
   }
 }
 
-// K17: 全局阻止 browser 默认 drop 行为（防止拖拽文件时跳转），保留 dragover 给组件内部处理
-function preventGlobalDrop(e: DragEvent): void {
+// K17: 全局阻止 browser 默认 drop 和 dragover 行为（防止拖拽文件时跳转/显示禁止光标）
+function preventGlobalDrag(e: DragEvent): void {
   e.preventDefault();
 }
 
 onMounted(() => {
-  document.addEventListener('drop', preventGlobalDrop);
+  document.addEventListener('drop', preventGlobalDrag);
+  document.addEventListener('dragover', preventGlobalDrag);
 });
 
 onUnmounted(() => {
-  document.removeEventListener('drop', preventGlobalDrop);
+  document.removeEventListener('drop', preventGlobalDrag);
+  document.removeEventListener('dragover', preventGlobalDrag);
 });
 </script>

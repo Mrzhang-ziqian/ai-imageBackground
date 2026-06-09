@@ -574,8 +574,7 @@ function handleCancelProcess(): void {
   doReset();
 }
 
-let draftIdCounter = 0;
-function generateDraftId(): string { return `draft_${Date.now()}_${++draftIdCounter}`; }
+function generateDraftId(): string { return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`; }
 
 /** 保存处理结果到草稿箱（J3: 提取自 doProcessFile / handleRetry 的重复逻辑） */
 async function saveResultToDrafts(resultBlob: Blob, file: File): Promise<string> {
@@ -597,7 +596,12 @@ async function handleLargeImageResize(): Promise<void> {
   largeImageDialog.value.resizing = true;
   try {
     const resized = await resizeImageClient(file, RECOMMENDED_MAX_DIM);
-    const resizedFile = new File([resized], file.name.replace(/\.(\w+)$/, '_resized.$1') || file.name + '_resized', { type: 'image/jpeg' });
+    // 健壮的文件名处理：无扩展名时也能正确添加 _resized 后缀
+    const dotIndex = file.name.lastIndexOf('.');
+    const resizedName = dotIndex > 0
+      ? file.name.slice(0, dotIndex) + '_resized' + file.name.slice(dotIndex)
+      : file.name + '_resized';
+    const resizedFile = new File([resized], resizedName, { type: 'image/jpeg' });
     largeImageDialog.value.visible = false;
     await doProcessFile(resizedFile);
   } catch (err) {
@@ -712,6 +716,7 @@ async function handleHistoryRestore(entry: HistoryEntry): Promise<void> {
     // 历史恢复 → 在结果页展示（使用 restoreFromDraft 加载完整原图）
     selectedBgColor.value = 'transparent';
     const resultObjUrl = URL.createObjectURL(resultBlob);
+    trackUrl(resultObjUrl);
     // 历史记录不存储全尺寸原图，使用结果图作为对比参考（远优于 120px 缩略图）
     remover.restoreFromDraft({
       resultUrl: resultObjUrl,

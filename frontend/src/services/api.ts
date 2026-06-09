@@ -183,6 +183,14 @@ export function uploadAndRemoveBg(
       reject(new Error('无法连接到服务器，请检查网络后重试'));
     });
 
+    // 设置超时（后端 AI 推理可能需要较长时间，设 120s）
+    xhr.timeout = 120_000;
+    xhr.addEventListener('timeout', () => {
+      isAborted = true;
+      xhr.abort();
+      reject(new Error('处理超时，请尝试较小的图片或稍后重试'));
+    });
+
     if (signal) {
       signal.addEventListener('abort', () => {
         isAborted = true;

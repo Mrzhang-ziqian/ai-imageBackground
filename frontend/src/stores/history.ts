@@ -8,9 +8,11 @@ import { ref, readonly, watch } from 'vue'
 import type { HistoryEntry } from '@/types'
 import { historyApi } from '@/services/api'
 import { useAuthStore } from './auth'
+import { useUiStore } from './ui'
 
 export const useHistoryStore = defineStore('history', () => {
   const auth = useAuthStore()
+  const ui = useUiStore()
   const entries = ref<HistoryEntry[]>([])
   const loading = ref(false)
   const loaded = ref(false)
@@ -29,23 +31,27 @@ export const useHistoryStore = defineStore('history', () => {
     }
   }
 
-  // ---- 删除单条 ----
+  // ---- 删除单条（乐观更新 + 失败回滚） ----
   async function remove(id: number): Promise<void> {
+    const snapshot = [...entries.value]
+    entries.value = entries.value.filter(e => e.id !== id)
     try {
       await historyApi.remove(id, auth.token)
-      entries.value = entries.value.filter(e => e.id !== id)
     } catch {
-      // 静默失败（API 失败时 UI 不变）
+      entries.value = snapshot
+      ui.showToast({ message: '删除失败，请重试', type: 'error' })
     }
   }
 
-  // ---- 清空全部 ----
+  // ---- 清空全部（乐观更新 + 失败回滚） ----
   async function clearAll(): Promise<void> {
+    const snapshot = [...entries.value]
+    entries.value = []
     try {
       await historyApi.clearAll(auth.token)
-      entries.value = []
     } catch {
-      // 静默失败
+      entries.value = snapshot
+      ui.showToast({ message: '清空失败，请重试', type: 'error' })
     }
   }
 

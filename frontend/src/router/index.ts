@@ -44,10 +44,13 @@ const router = createRouter({
 });
 
 // 路由守卫：未登录跳回首页
-router.beforeEach((to, _from, next) => {
+router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresAuth) {
     const auth = useAuthStore();
-    // T1 fix: 直接检查 store state 而非 computed，避免可能的 unwrap 问题
+    // 等待初始化完成，避免应用刚加载时 fetchMe() 未返回导致误判
+    if (!auth.initialized) {
+      await auth.fetchMe();
+    }
     const loggedIn = !!auth.token && !!auth.user;
     if (!loggedIn) {
       const ui = useUiStore();
