@@ -53,15 +53,30 @@ async def init_db() -> None:
 
     os.makedirs("data", exist_ok=True)
 
-    # K9: 使用默认密码时输出警告
+    # K9: 生产环境使用默认密码时输出严重警告
+    is_prod = os.environ.get("ENV", "production").lower() not in ("dev", "development")
     for seed in SEED_USERS:
         env_key = f"SEED_{seed['username'].upper()}_PASSWORD"
         if os.environ.get(env_key) is None:
             # N5: 直接使用 email 查找对应种子用户的环境变量（避免 username → env_key 映射错误）
             if seed['email'] == 'admin@admin.com' and not os.environ.get('SEED_ADMIN_PASSWORD'):
-                logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 SEED_ADMIN_PASSWORD 环境变量")
+                if is_prod:
+                    logger.critical(
+                        "【严重安全警告】生产环境中内置管理员用户 %s 使用默认密码！"
+                        "请立即设置 SEED_ADMIN_PASSWORD 环境变量后重启服务。",
+                        seed['email'],
+                    )
+                else:
+                    logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 SEED_ADMIN_PASSWORD 环境变量")
             elif seed['email'] == 'test@test.com' and not os.environ.get('SEED_TEST_PASSWORD'):
-                logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 SEED_TEST_PASSWORD 环境变量")
+                if is_prod:
+                    logger.critical(
+                        "【严重安全警告】生产环境中内置测试用户 %s 使用默认密码！"
+                        "请立即设置 SEED_TEST_PASSWORD 环境变量后重启服务。",
+                        seed['email'],
+                    )
+                else:
+                    logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 SEED_TEST_PASSWORD 环境变量")
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

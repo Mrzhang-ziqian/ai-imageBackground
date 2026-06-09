@@ -42,6 +42,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ---------- 常量 ----------
+# 必须在 CORS 配置等模块级代码之前定义
+IS_DEV = os.environ.get("ENV", "production").lower() in ("dev", "development")
+ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+# FastAPI 请求体大小限制（先于内存读取）
+MAX_BODY_SIZE = 25 * 1024 * 1024  # 25MB
+MAX_IMAGE_DIM = 3000       # 最大允许上传边长（超过拒绝）
+PROCESS_MAX_DIM = 800      # AI 处理时缩放到的最大边长（降低内存压力）
+AI_TIMEOUT_SECONDS = 90    # AI 推理超时（秒）
+
 # ---------- 应用初始化 ----------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -58,10 +69,22 @@ app = FastAPI(
 )
 
 # CORS 配置 —— 从环境变量读取允许来源
-ALLOWED_ORIGINS = (os.environ.get("CORS_ORIGINS") or "*").split(",")
+# 生产环境不允许使用通配符 "*"（安全要求）
+_cors_raw = os.environ.get("CORS_ORIGINS", "")
+if _cors_raw:
+    ALLOWED_ORIGINS = [o.strip() for o in _cors_raw.split(",")]
+else:
+    if IS_DEV:
+        ALLOWED_ORIGINS = ["*"]
+        logger.warning("CORS 允许所有来源（开发模式）。生产环境请设置 CORS_ORIGINS 环境变量。")
+    else:
+        # 生产环境默认仅允许 localhost（最安全的回退策略）
+        ALLOWED_ORIGINS = ["http://localhost:3000", "http://localhost:5173"]
+        logger.warning("CORS_ORIGINS 未设置，已回退为仅允许 localhost。生产部署请配置正确的前端域名。")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in ALLOWED_ORIGINS],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -74,16 +97,6 @@ app.include_router(history_router)
 
 # G24: 注册订阅路由
 app.include_router(subscription_router)
-
-# ---------- 常量 ----------
-IS_DEV = os.environ.get("ENV", "production").lower() in ("dev", "development")
-ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
-# FastAPI 请求体大小限制（先于内存读取）
-MAX_BODY_SIZE = 25 * 1024 * 1024  # 25MB
-MAX_IMAGE_DIM = 3000       # 最大允许上传边长（超过拒绝）
-PROCESS_MAX_DIM = 800      # AI 处理时缩放到的最大边长（降低内存压力）
-AI_TIMEOUT_SECONDS = 90    # AI 推理超时（秒）
 
 # 延迟加载模型 session，首次请求时初始化
 # 模型降级链路：u2net（质量最高）→ u2netp（轻量）→ silueta（兜底）

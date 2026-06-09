@@ -2,7 +2,8 @@
 
 > 记录于 2026-06-08 全栈测试阶段
 > 第二轮深度测试：2026-06-08（资深测试工程师审查）
-> 最终清理完成于 2026-06-08，数据库仅保留 admin@admin.com 和 test@test.com 用户
+> 第三轮全栈优化：2026-06-09（安全加固 + 异常处理完善）
+> 最终清理完成于 2026-06-09，数据库仅保留 admin@admin.com 和 test@test.com 用户
 
 ---
 
@@ -50,9 +51,9 @@
 - **位置**: `backend/models.py` 第 57 行
 - **修复**: 改为 `nullable=False`
 
-### 10. subscription.py: Webhook 未配置 secret 时安全风险
+### 10. subscription.py: Webhook 未配置 secret 时安全风险（已强化）
 - **位置**: `backend/subscription.py` 第 162 行
-- **修复**: 非开发环境（ENV != development）时拒绝未配置 secret 的请求
+- **修复**: 非开发环境强制拒绝无签名验证的 webhook；添加幂等性检查
 
 ### 11. cleanup_test_data.py: 使用 os.path 而非 pathlib
 - **位置**: `backend/cleanup_test_data.py`
@@ -66,57 +67,81 @@
 
 ---
 
-## 🟠 新发现 — 第二轮深度测试
+## 🟠 第三轮全栈优化修复（2026-06-09）
 
-### 17. 【高】DraftDetailPage: handleConfirm 先跳转后删除，失败时草稿残留
+### 13. 【严重】auth.py: 生产环境 JWT_SECRET 未设置时静默使用随机密钥
+- **位置**: `backend/auth.py` 第 19-28 行
+- **现象**: 生产环境未设置 JWT_SECRET 时自动生成运行时随机密钥，服务重启后所有 token 失效
+- **修复**: 生产环境强制检查 JWT_SECRET，未设置时拒绝启动并抛出 RuntimeError；开发环境（ENV=dev）保持自动生成
+
+### 14. 【严重】main.py: CORS 配置为 `*` 通配符
+- **位置**: `backend/main.py` 第 61-67 行
+- **现象**: 未设置 CORS_ORIGINS 时默认允许所有来源，存在 CSRF 风险
+- **修复**: 开发环境保持 `*`，生产环境回退为仅允许 localhost，并支持通过环境变量配置
+
+### 15. 【严重】main.py: IS_DEV 常量定义在使用之后
+- **位置**: `backend/main.py` 第 91 行定义，第 66 行使用
+- **现象**: `IS_DEV` 在 CORS 配置中先于定义被使用，导致 NameError
+- **修复**: 将所有常量定义移到文件顶部（CORS 配置之前）
+
+### 16. 【高】models.py: file_hash 列缺少索引
+- **位置**: `backend/models.py` 第 57 行
+- **现象**: 历史记录去重查询使用 `file_hash` 过滤条件但缺少索引，导致全表扫描
+- **修复**: 添加 `index=True`
+
+### 17. 【高】history.py: 缩略图生成和文件 I/O 缺少异常处理
+- **位置**: `backend/history.py` 第 264-265, 395-397, 425-430 行
+- **现象**: `Image.open()` 和 `with open()` 操作未包裹 try/except，损坏图片或磁盘空间不足时会导致未处理异常
+- **修复**: 添加完整的 try/except 块，文件写入失败时回滚 DB 记录并清理部分写入的文件
+
+### 18. 【高】WorkspacePage: trackUrl 函数未定义
+- **位置**: `frontend/src/pages/WorkspacePage.vue` 第 719 行
+- **现象**: `handleHistoryRestore` 中调用 `trackUrl(resultObjUrl)` 但该函数定义在 `DraftDetailPage.vue` 中，WorkspacePage 中缺失
+- **修复**: 在 WorkspacePage 中添加 `trackUrl` 函数和 `_workspaceUrls` Set，`onUnmounted` 时统一释放
+
+### 19. 【高】路由守卫：并发导航时重复调用 fetchMe
+- **位置**: `frontend/src/router/index.ts` 第 47-60 行
+- **现象**: 多个并发导航触发 `beforeEach` 时可能同时调用 `auth.fetchMe()`，产生竞态条件
+- **修复**: 添加 `_authCheckPromise` 去重守卫，确保同一时间只有一个 `fetchMe` 在执行
+
+### 20. 【中】database.py: 生产环境种子用户默认密码安全警告加强
+- **位置**: `backend/database.py` 第 57-64 行
+- **现象**: 生产环境使用默认密码时仅输出 WARNING 级别日志
+- **修复**: 生产环境升级为 CRITICAL 级别，明确提示立即设置密码环境变量
+
+### 21. 【中】subscription.py: Webhook 事件缺少幂等性处理
+- **位置**: `backend/subscription.py` 第 192-207 行
+- **现象**: Stripe 可能重复发送同一 webhook 事件，无去重机制会导致重复处理
+- **修复**: 添加基于 `event.id` 的幂等检查
+
+---
+
+## 🟠 待修复问题
+
+### 22. 【中】DraftDetailPage: handleConfirm 先跳转后删除，失败时草稿残留
 - **位置**: `frontend/src/pages/DraftDetailPage.vue` 第 263-283 行
 - **现象**: `handleConfirm` 中先 `router.replace('/workspace')` 跳转，再 `await drafts.remove(draftId)`。如果删除失败，用户已离开页面且无法重试，草稿永久残留在 IndexedDB 中
 - **建议**: 改为先删除草稿，成功后再跳转
 
-### 18. 【高】WorkspacePage: handleHistoryRestore 中 Object URL 泄漏
-- **位置**: `frontend/src/pages/WorkspacePage.vue` 第 714 行
-- **现象**: `URL.createObjectURL(resultBlob)` 创建的 URL 未被 `trackUrl()` 追踪，组件卸载时不会自动回收，造成内存泄漏
-- **建议**: 调用 `trackUrl(resultObjUrl)` 确保 URL 被回收
-
-### 19. 【高】history store: remove/clearAll 静默失败
-- **位置**: `frontend/src/stores/history.ts` 第 33-50 行
-- **现象**: 删除历史记录 API 失败时，catch 块完全为空（静默失败）。前端状态已乐观更新但后端未变化，刷新后数据恢复旧值，用户困惑
-- **建议**: 使用乐观更新 + 失败回滚模式，或至少用 toast 通知用户失败
-
-### 20. 【高】路由守卫：初始化未完成时误判登录状态
-- **位置**: `frontend/src/router/index.ts` 第 47-60 行
-- **现象**: `router.beforeEach` 直接检查 `auth.token`/`auth.user`，但应用刚加载时 `auth.fetchMe()` 可能尚未完成，此时 `auth.user` 为 null，即使 token 有效也被判定为未登录并重定向
-- **建议**: 检查 `auth.initialized` 状态，未完成初始化时等待
-
-### 21. 【中】auth store: quotaLeft 返回 Infinity 而非 null
+### 23. 【中】auth store: quotaLeft 返回 Infinity 而非 null
 - **位置**: `frontend/src/stores/auth.ts` 第 23-28 行
 - **现象**: 未登录时 `quotaLeft` 返回 `Infinity`，而 `useQuota` 中返回 `null`。两处不一致可能导致 UI 判断异常
 - **建议**: 统一为 `null`
 
-### 22. 【中】ProPlanModal: 管理订阅失败时错误显示位置错误
+### 24. 【中】ProPlanModal: 管理订阅失败时错误显示位置错误
 - **位置**: `frontend/src/components/ProPlanModal.vue` 第 147 行
 - **现象**: 管理订阅（portal）失败时，错误信息写入 `checkoutError`，但该状态只在 CTA 区域显示，而管理订阅按钮在"已是 Pro 用户"区域，用户看不到错误
 - **建议**: 为 portal 操作添加独立的 `portalError` 状态
 
-### 23. 【中】ui store: Toast 定时器在组件卸载时未清理
-- **位置**: `frontend/src/stores/ui.ts` 第 11, 16-19 行
-- **现象**: `toastTimer` 是模块级变量，`showToast` 设置的 `setTimeout` 在组件卸载后仍可能触发
-- **建议**: 在 store 的 `$dispose` 或使用 `watchEffect` 自动管理
-
-### 24. 【中】useToast 与 useUiStore 的 toast 功能重复
+### 25. 【中】useToast 与 useUiStore 的 toast 功能重复
 - **位置**: `frontend/src/composables/useToast.ts`
 - **现象**: 存在组件级 `useToast` 和全局 `useUiStore` 两套 toast 系统，调用方可能混淆
 - **建议**: 明确两套 toast 的用途或废弃 `useToast`
 
-### 25. 【中】DraftDetailPage: onUnmounted 中先 releaseAllUrls 再 remover.reset
+### 26. 【中】DraftDetailPage: onUnmounted 中先 releaseAllUrls 再 remover.reset
 - **位置**: `frontend/src/pages/DraftDetailPage.vue` 第 257-260 行
 - **现象**: `releaseAllUrls()` 回收 URL 后再调用 `remover.reset()`，后者可能仍引用已回收的 URL
 - **建议**: 调换顺序：先 `remover.reset()` 再 `releaseAllUrls()`
-
-### 26. 【中】WorkspacePage: draftIdCounter 在 HMR 时可能重置
-- **位置**: `frontend/src/pages/WorkspacePage.vue` 第 577 行
-- **现象**: 模块级变量 `draftIdCounter` 在 Vite HMR 时会被重置为 0，可能导致 ID 冲突
-- **建议**: 使用 `Date.now()` + 随机数生成唯一 ID
 
 ### 27. 【中】BackgroundColorPicker: CUSTOM_FALLBACK_HEX 硬编码
 - **位置**: `frontend/src/components/BackgroundColorPicker.vue` 第 159 行
@@ -128,57 +153,39 @@
 - **现象**: 循环中发生异常时 `loading` 保持 true，UI 永远显示加载中
 - **建议**: 将 `loading = false` 放在 finally 块中
 
-### 29. 【中】api.ts: XHR 未设置 timeout
-- **位置**: `frontend/src/services/api.ts` 第 181-191 行
-- **现象**: 没有设置 `xhr.timeout`，后端无响应时用户看到通用错误而非"超时"
-- **建议**: 设置 `xhr.timeout` 并监听 `xhr.ontimeout`
-
-### 30. 【低】WorkspacePage: handleLargeImageResize 文件名处理边界情况
-- **位置**: `frontend/src/pages/WorkspacePage.vue` 第 600 行
-- **现象**: 无扩展名的文件（如 "image"）重命名逻辑不会添加 `_resized` 后缀
-- **建议**: 使用更健壮的文件名处理
-
-### 31. 【低】DraftBoxPage: URL.revokeObjectURL 在 a.click() 后立即调用
+### 29. 【低】DraftBoxPage: URL.revokeObjectURL 在 a.click() 后立即调用
 - **位置**: `frontend/src/pages/DraftBoxPage.vue` 第 108-111 行
 - **现象**: 立即回收可能导致部分浏览器下载未开始
 - **建议**: 使用 `setTimeout(() => URL.revokeObjectURL(url), 1000)` 延迟回收
 
-### 32. 【低】UploadZone: 只阻止 drop 未阻止 dragover
+### 30. 【低】UploadZone: 只阻止 drop 未阻止 dragover
 - **位置**: `frontend/src/components/UploadZone.vue` 第 113-123 行
 - **现象**: 全局 drop 阻止了浏览器默认行为，但未阻止 dragover，浏览器仍显示"禁止"光标
 - **建议**: 同时阻止全局 dragover 事件
 
-### 33. 【低】SessionFilmstrip: 缩略图加载失败后显示空白
+### 31. 【低】SessionFilmstrip: 缩略图加载失败后显示空白
 - **位置**: `frontend/src/components/SessionFilmstrip.vue` 第 49-55 行
 - **现象**: `onThumbError` 隐藏 img 但不显示备用内容
 - **建议**: 加载失败时通过 emit 通知父组件置空 thumbUrl
-
-### 34. 【低】errorHumanizer: 多字节字符截断可能产生乱码
-- **位置**: `frontend/src/utils/errorHumanizer.ts` 第 87-89 行
-- **现象**: `slice(0, 117)` 可能截断 emoji 等代理对字符
-- **建议**: 使用 `Array.from(rawMessage).slice(0, 117).join('')`
 
 ---
 
 ## 🟠 持续关注（架构级，暂不修复）
 
-### 13. SQLite 不适合生产级并发
+### 32. SQLite 不适合生产级并发
 - **建议**: 用户量增大后考虑迁移到 PostgreSQL
 
-### 14. JWT_SECRET 随机生成的安全隐患
-- **建议**: 添加更明确的启动检查，在非开发环境下强制要求设置 JWT_SECRET
-
-### 15. 历史文件存储无清理策略
+### 33. 历史文件存储无清理策略
 - **建议**: 添加定时任务清理超过 N 天的历史文件
 
-### 35. 前端 API 错误处理不一致
+### 34. 前端 API 错误处理不一致
 - **位置**: `frontend/src/services/api.ts`
 - **建议**: 统一错误处理中间件，减少重复代码
 
-### 36. ProPlanModal: 无支付成功后的计划刷新
+### 35. ProPlanModal: 无支付成功后的计划刷新
 - **建议**: 添加 `visibilitychange` 事件监听
 
-### 37. useQuota: 与 auth store 的配额同步存在延迟
+### 36. useQuota: 与 auth store 的配额同步存在延迟
 - **建议**: 在 `afterSuccessfulRequest()` 中乐观更新本地配额计数
 
 ---
@@ -201,3 +208,12 @@
 - ✅ ESLint: 0 errors, 0 warnings（全项目通过）
 - ✅ 后端所有 .py 文件编译通过
 - ✅ 密码工具函数已提取到 utils.py，解决循环依赖
+- ✅ JWT_SECRET 生产环境强制检查
+- ✅ CORS 安全配置（生产环境限制来源）
+- ✅ file_hash 数据库索引优化
+- ✅ 历史记录缩略图/文件 I/O 异常处理
+- ✅ WorkspacePage Object URL 生命周期管理
+- ✅ 路由守卫并发去重
+- ✅ Stripe Webhook 幂等性检查
+- ✅ 18 个 API 端到端测试全部通过
+- ✅ 前端 3 个主要页面无控制台错误

@@ -16,8 +16,15 @@ from utils import hash_password, verify_password
 from schemas import UserRegister, UserLogin, UserResponse, TokenResponse
 
 # ---------- Config ----------
+IS_PROD = os.environ.get("ENV", "production").lower() not in ("dev", "development")
 SECRET_KEY = os.environ.get("JWT_SECRET", "")
 if not SECRET_KEY:
+    if IS_PROD:
+        raise RuntimeError(
+            "FATAL: JWT_SECRET 环境变量未设置！"
+            "生产环境必须通过环境变量设置 JWT_SECRET，否则拒绝启动。"
+            "开发环境可使用 ENV=dev 跳过此检查（将自动生成随机密钥）。"
+        )
     import secrets
     import warnings
     SECRET_KEY = secrets.token_hex(32)

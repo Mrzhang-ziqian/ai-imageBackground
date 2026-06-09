@@ -159,20 +159,21 @@ async def create_portal(
 @router.post("/webhook")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     """Stripe Webhook 端点 — 处理订阅事件"""
+    body = await request.body()
+
     if not STRIPE_WEBHOOK_SECRET:
-        logger.error("Stripe Webhook Secret 未配置，生产环境下必须设置！")
-        # 开发环境允许，生产环境必须配置
-        if os.environ.get("ENV", "development") != "development":
+        logger.error("Stripe Webhook Secret 未配置，拒绝处理 Webhook")
+        # 开发环境允许直接解析，生产环境强制拒绝
+        is_dev = os.environ.get("ENV", "development").lower() in ("dev", "development")
+        if not is_dev:
             raise HTTPException(status_code=500, detail="Webhook secret not configured")
         logger.warning("开发环境：跳过 Stripe webhook 验签")
-        body = await request.body()
         import json
         try:
             event = json.loads(body)
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid payload")
     else:
-        body = await request.body()
         sig_header = request.headers.get("stripe-signature", "")
 
         import stripe
@@ -191,6 +192,21 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
     event_type = event.get("type", "")
     logger.info(f"Stripe Webhook: {event_type}")
+
+    # ---------- Webhook 幂等性：基于 Stripe event ID 去重 ----------
+    from sqlalchemy import text as sa_text
+    try:
+        event_id = event.get("id", "")
+        if event_id:
+            result = await db.execute(
+                sa_text("SELECT 1 FROM history WHERE file_hash = :hash LIMIT 1"),
+                {"hash": f"stripe_evt_{event_id}"},
+            )
+            if result.scalar_one_or_none():
+                logger.info(f"Stripe Webhook 重复事件，已跳过: {event_id}")
+                return {"received": True, "duplicate": True}
+    except Exception:
+        pass  # 幂等表可能不存在，跳过
 
     # ---------- 处理订阅事件 ----------
     if event_type == "checkout.session.completed":

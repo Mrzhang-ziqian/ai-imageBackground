@@ -398,6 +398,11 @@ onMounted(async () => {
 onUnmounted(() => {
   remover.reset();
   batch.destroy();
+  // 释放所有 tracked Object URLs
+  for (const url of _workspaceUrls) {
+    URL.revokeObjectURL(url);
+  }
+  _workspaceUrls.clear();
 });
 
 // ---- 批量处理完成 → 自动刷新历史 ----
@@ -741,6 +746,15 @@ function handleRetryBlocked(entry: HistoryEntry): void {
   history.remove(entry.id);
   ui.showToast({ message: '请重新上传图片', type: 'success' });
   doReset();
+}
+
+// ---- Object URL 生命周期管理 ----
+/** 跟踪所有在 WorkspacePage 中创建的 Object URL，确保卸载时全部释放 */
+const _workspaceUrls = new Set<string>();
+
+function trackUrl(url: string): string {
+  _workspaceUrls.add(url);
+  return url;
 }
 
 // ---- 粘贴上传 ----

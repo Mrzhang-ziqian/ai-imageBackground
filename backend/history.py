@@ -261,8 +261,12 @@ async def save_history_entry_blocked(
                     pass
 
         # 生成原图缩略图
-        orig_img = Image.open(io.BytesIO(original_bytes))
-        thumb_orig_bytes = _thumb_bytes(orig_img, "JPEG")
+        try:
+            orig_img = Image.open(io.BytesIO(original_bytes))
+            thumb_orig_bytes = _thumb_bytes(orig_img, "JPEG")
+        except Exception as e:
+            logger.exception("被阻塞记录缩略图生成失败")
+            return None
 
         # 目录
         user_dir = os.path.join(HISTORY_DIR, str(user.id))
@@ -287,8 +291,14 @@ async def save_history_entry_blocked(
 
         # 写入原图缩略图文件
         thumb_orig_path = os.path.join(user_dir, f"{entry.id}_thumb_orig.jpg")
-        with open(thumb_orig_path, "wb") as f:
-            f.write(thumb_orig_bytes)
+        try:
+            with open(thumb_orig_path, "wb") as f:
+                f.write(thumb_orig_bytes)
+        except OSError as e:
+            logger.error(f"被阻塞记录缩略图写入失败: {e}")
+            # 回滚 DB 中的记录
+            await db.rollback()
+            return None
 
         entry.thumb_original = thumb_orig_path
         await db.commit()
@@ -392,9 +402,13 @@ async def save_history_entry(
                     pass
 
         # 生成缩略图
-        orig_img = Image.open(io.BytesIO(original_bytes))
-        thumb_orig_bytes = _thumb_bytes(orig_img, "JPEG")
-        thumb_result_bytes = _thumb_bytes(result_image, "PNG")
+        try:
+            orig_img = Image.open(io.BytesIO(original_bytes))
+            thumb_orig_bytes = _thumb_bytes(orig_img, "JPEG")
+            thumb_result_bytes = _thumb_bytes(result_image, "PNG")
+        except Exception as e:
+            logger.exception("历史记录缩略图生成失败")
+            return None
 
         # 创建目录
         user_dir = os.path.join(HISTORY_DIR, str(user.id))
@@ -422,12 +436,25 @@ async def save_history_entry(
         thumb_result_path = os.path.join(user_dir, f"{entry.id}_thumb_result.png")
         result_path = os.path.join(user_dir, f"{entry.id}_result.png")
 
-        with open(thumb_orig_path, "wb") as f:
-            f.write(thumb_orig_bytes)
-        with open(thumb_result_path, "wb") as f:
-            f.write(thumb_result_bytes)
-        with open(result_path, "wb") as f:
-            f.write(result_bytes)
+        try:
+            with open(thumb_orig_path, "wb") as f:
+                f.write(thumb_orig_bytes)
+            with open(thumb_result_path, "wb") as f:
+                f.write(thumb_result_bytes)
+            with open(result_path, "wb") as f:
+                f.write(result_bytes)
+        except OSError as e:
+            logger.error(f"历史记录文件写入失败: {e}")
+            # 回滚 DB 中的记录
+            await db.rollback()
+            # 清理可能已写入的部分文件
+            for path in (thumb_orig_path, thumb_result_path, result_path):
+                try:
+                    if os.path.isfile(path):
+                        os.remove(path)
+                except Exception:
+                    pass
+            return None
 
         # 更新路径 + 统一提交
         entry.thumb_original = thumb_orig_path

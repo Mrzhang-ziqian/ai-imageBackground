@@ -44,12 +44,17 @@ const router = createRouter({
 });
 
 // 路由守卫：未登录跳回首页
+let _authCheckPromise: Promise<void> | null = null;
 router.beforeEach(async (to, _from, next) => {
   if (to.meta.requiresAuth) {
     const auth = useAuthStore();
     // 等待初始化完成，避免应用刚加载时 fetchMe() 未返回导致误判
     if (!auth.initialized) {
-      await auth.fetchMe();
+      // 防止多个并发导航同时触发 fetchMe
+      if (!_authCheckPromise) {
+        _authCheckPromise = auth.fetchMe().finally(() => { _authCheckPromise = null; });
+      }
+      await _authCheckPromise;
     }
     const loggedIn = !!auth.token && !!auth.user;
     if (!loggedIn) {
