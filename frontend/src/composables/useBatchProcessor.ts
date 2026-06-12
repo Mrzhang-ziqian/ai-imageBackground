@@ -222,27 +222,30 @@ export function useBatchProcessor() {
     // T38: 存储在实例变量中
     retryAbortController = new AbortController();
 
-    // 重置所有失败项状态
-    for (const item of errorItems) {
-      item.status = 'queued';
-      item.progress = 0;
-      item.message = '等待重试';
-      item.error = null;
-      item.resultBlob = null;
-    }
+    try {
+      // 重置所有失败项状态
+      for (const item of errorItems) {
+        item.status = 'queued';
+        item.progress = 0;
+        item.message = '等待重试';
+        item.error = null;
+        item.resultBlob = null;
+      }
 
-    for (const item of errorItems) {
-      if (retryAbortController.signal.aborted) break;
-      currentIndex.value = items.indexOf(item);
-      await processOneItem(item, retryAbortController.signal);
-    }
+      for (const item of errorItems) {
+        if (retryAbortController.signal.aborted) break;
+        currentIndex.value = items.indexOf(item);
+        await processOneItem(item, retryAbortController.signal);
+      }
 
-    // N7: 使用 allDone 判断而非无条件设置 done
-    if (!retryAbortController.signal.aborted && allDone.value) {
-      phase.value = 'done';
+      // N7: 使用 allDone 判断而非无条件设置 done
+      if (!retryAbortController.signal.aborted && allDone.value) {
+        phase.value = 'done';
+      }
+    } finally {
+      _retryInProgress = false;
+      retryAbortController = null;
     }
-    _retryInProgress = false;
-    retryAbortController = null;
   }
 
   /** 取消当前正在处理的批次 */

@@ -7,6 +7,7 @@ import io
 import os
 import hashlib
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
@@ -24,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/history", tags=["history"])
 
-HISTORY_DIR = "data/history"
+# 使用 __file__ 计算绝对路径，避免依赖 CWD
+HISTORY_DIR = str(Path(__file__).resolve().parent.parent / "data" / "history")
 MAX_BLOCKED_PER_USER = 5        # 被配额拒绝的记录最多保留条数（防止刷接口）
 THUMB_SIDE = 120
 
@@ -260,10 +262,10 @@ async def save_history_entry_blocked(
                 except Exception:
                     pass
 
-        # 生成原图缩略图
+        # 生成原图缩略图（CPU 密集型操作移到线程池）
         try:
-            orig_img = Image.open(io.BytesIO(original_bytes))
-            thumb_orig_bytes = _thumb_bytes(orig_img, "JPEG")
+            orig_img = await asyncio.to_thread(Image.open, io.BytesIO(original_bytes))
+            thumb_orig_bytes = await asyncio.to_thread(_thumb_bytes, orig_img, "JPEG")
         except Exception as e:
             logger.exception("被阻塞记录缩略图生成失败")
             return None
@@ -401,11 +403,11 @@ async def save_history_entry(
                 except Exception:
                     pass
 
-        # 生成缩略图
+        # 生成缩略图（CPU 密集型操作移到线程池，避免阻塞事件循环）
         try:
-            orig_img = Image.open(io.BytesIO(original_bytes))
-            thumb_orig_bytes = _thumb_bytes(orig_img, "JPEG")
-            thumb_result_bytes = _thumb_bytes(result_image, "PNG")
+            orig_img = await asyncio.to_thread(Image.open, io.BytesIO(original_bytes))
+            thumb_orig_bytes = await asyncio.to_thread(_thumb_bytes, orig_img, "JPEG")
+            thumb_result_bytes = await asyncio.to_thread(_thumb_bytes, result_image, "PNG")
         except Exception as e:
             logger.exception("历史记录缩略图生成失败")
             return None

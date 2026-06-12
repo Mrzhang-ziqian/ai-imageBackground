@@ -5,7 +5,7 @@
  */
 
 /** 错误翻译映射表 */
-const ERROR_TRANSLATIONS: [RegExp, string][] = [
+const ERROR_TRANSLATIONS: [RegExp, string | ((raw: string, match: string) => string)][] = [
   // -- 网络 / 连接相关 --
   [/无法连接到服务器|Failed to fetch|NetworkError|ERR_CONNECTION/i, '网络连接失败，请检查您的网络后重试'],
   [/timeout|超时/i, '服务器响应超时，请稍后重试'],

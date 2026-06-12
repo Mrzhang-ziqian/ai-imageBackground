@@ -31,6 +31,7 @@ from auth import router as auth_router, require_user, check_and_reset_quota
 from models import User
 from history import router as history_router, save_history_entry, save_history_entry_blocked
 from subscription import router as subscription_router, get_batch_limit, get_history_limit
+from config import IS_DEV
 
 # ---------- 日志 ----------
 logging.basicConfig(
@@ -43,8 +44,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------- 常量 ----------
-# 必须在 CORS 配置等模块级代码之前定义
-IS_DEV = os.environ.get("ENV", "production").lower() in ("dev", "development")
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/webp"}
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 # FastAPI 请求体大小限制（先于内存读取）
@@ -357,7 +356,6 @@ async def remove_background(
             .where(User.id == current_user.id, User.quota_used < User.quota_daily)
             .values(quota_used=User.quota_used + 1)
         )
-        await db.refresh(current_user)
 
         if result.rowcount == 0:
             # 配额已满或超用，保存被阻塞的记录
@@ -376,7 +374,8 @@ async def remove_background(
                 status_code=429,
                 detail=f"今日免费配额已用完 ({current_user.quota_used}/{current_user.quota_daily})，请升级至 Pro 版",
             )
-        # 配额已原子递增，后续无需再手动 +1
+        # 配额已原子递增：refresh 仅在 rowcount > 0 时执行，确保数据一致性
+        await db.refresh(current_user)
 
     original_size = (image.width, image.height)
     logger.info(f"处理图片: {file.filename} (原图 {original_size[0]}x{original_size[1]}, {len(contents) / 1024:.1f}KB)")
@@ -413,9 +412,6 @@ async def remove_background(
     except Exception as e:
         logger.error(f"图片预处理失败 (缩放/转RGBA): {e}")
         raise HTTPException(status_code=400, detail=f"图片预处理失败: {e}")
-
-    # 主动触发垃圾回收，减少内存碎片（不阻塞事件循环）
-    await asyncio.to_thread(gc.collect)
 
     # --- 6. AI 移除背景（模型降级 + 重试 + 超时保护） ---
     try:

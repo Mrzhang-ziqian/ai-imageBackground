@@ -15,70 +15,81 @@ HISTORY_DIR = Path(__file__).resolve().parent.parent / "data" / "history"
 
 
 async def cleanup():
-    # 确保表结构存在并运行迁移
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        # 确保表结构存在并运行迁移
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-        # G24: 添加 Stripe 订阅相关列（如果不存在）
-        try:
-            result = await conn.execute(sa.text("PRAGMA table_info('users')"))
-            columns = [row[1] for row in result.fetchall()]
-            if 'stripe_customer_id' not in columns:
-                await conn.execute(sa.text("ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR(255)"))
-                print("[MIGRATE] 添加列: users.stripe_customer_id")
-            if 'stripe_subscription_id' not in columns:
-                await conn.execute(sa.text("ALTER TABLE users ADD COLUMN stripe_subscription_id VARCHAR(255)"))
-                print("[MIGRATE] 添加列: users.stripe_subscription_id")
-            if 'subscription_status' not in columns:
-                await conn.execute(sa.text("ALTER TABLE users ADD COLUMN subscription_status VARCHAR(20)"))
-                print("[MIGRATE] 添加列: users.subscription_status")
-        except sa.exc.OperationalError:
-            pass
+            # P0-7: 启用外键约束（SQLite 默认关闭），确保级联删除生效
+            await conn.execute(sa.text("PRAGMA foreign_keys = ON"))
 
-    async with async_session() as db:
-        # 1. 查找所有用户
-        result = await db.execute(select(User))
-        all_users = result.scalars().all()
+            # G24: 添加 Stripe 订阅相关列（如果不存在）
+            try:
+                result = await conn.execute(sa.text("PRAGMA table_info('users')"))
+                columns = [row[1] for row in result.fetchall()]
+                if 'stripe_customer_id' not in columns:
+                    await conn.execute(sa.text("ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR(255)"))
+                    print("[MIGRATE] 添加列: users.stripe_customer_id")
+                if 'stripe_subscription_id' not in columns:
+                    await conn.execute(sa.text("ALTER TABLE users ADD COLUMN stripe_subscription_id VARCHAR(255)"))
+                    print("[MIGRATE] 添加列: users.stripe_subscription_id")
+                if 'subscription_status' not in columns:
+                    await conn.execute(sa.text("ALTER TABLE users ADD COLUMN subscription_status VARCHAR(20)"))
+                    print("[MIGRATE] 添加列: users.subscription_status")
+            except sa.exc.OperationalError:
+                pass
 
-        deleted_count = 0
-        for user in all_users:
-            if user.email in KEEP_EMAILS:
-                # 保留用户 → 重置配额和历史
-                user.quota_used = 0
-                user.quota_date = None
-                user.stripe_customer_id = None
-                user.stripe_subscription_id = None
-                user.subscription_status = None
-                print(f"[RESET] 已重置 {user.email} (ID={user.id}): quota_used=0, stripe cleared")
+        async with async_session() as db:
+            # 启用外键约束（会话级别）
+            await db.execute(sa.text("PRAGMA foreign_keys = ON"))
 
-                # 删除该用户的历史记录及文件
-                await db.execute(delete(History).where(History.user_id == user.id))
-                user_dir = HISTORY_DIR / str(user.id)
-                if user_dir.is_dir():
-                    try:
-                        shutil.rmtree(str(user_dir))
-                        print(f"[CLEAN] 已删除历史文件: {user_dir}")
-                    except OSError as e:
-                        print(f"[WARN] 删除历史文件失败 {user_dir}: {e}")
-            else:
-                # 非保留用户 → 彻底删除
-                user_dir = HISTORY_DIR / str(user.id)
-                if user_dir.is_dir():
-                    try:
-                        shutil.rmtree(str(user_dir))
-                        print(f"[CLEAN] 已删除历史文件: {user_dir}")
-                    except OSError as e:
-                        print(f"[WARN] 删除历史文件失败 {user_dir}: {e}")
+            # 1. 查找所有用户
+            result = await db.execute(select(User))
+            all_users = result.scalars().all()
 
-                await db.delete(user)
-                deleted_count += 1
-                print(f"[DELETE] 已删除用户: {user.email} (ID={user.id})")
+            deleted_count = 0
+            for user in all_users:
+                if user.email in KEEP_EMAILS:
+                    # 保留用户 → 重置配额和历史
+                    user.quota_used = 0
+                    user.quota_date = None
+                    user.stripe_customer_id = None
+                    user.stripe_subscription_id = None
+                    user.subscription_status = None
+                    print(f"[RESET] 已重置 {user.email} (ID={user.id}): quota_used=0, stripe cleared")
 
-        await db.commit()
+                    # 删除该用户的历史记录及文件
+                    await db.execute(delete(History).where(History.user_id == user.id))
+                    user_dir = HISTORY_DIR / str(user.id)
+                    if user_dir.is_dir():
+                        try:
+                            shutil.rmtree(str(user_dir))
+                            print(f"[CLEAN] 已删除历史文件: {user_dir}")
+                        except OSError as e:
+                            print(f"[WARN] 删除历史文件失败 {user_dir}: {e}")
+                else:
+                    # 非保留用户 → 彻底删除
+                    user_dir = HISTORY_DIR / str(user.id)
+                    if user_dir.is_dir():
+                        try:
+                            shutil.rmtree(str(user_dir))
+                            print(f"[CLEAN] 已删除历史文件: {user_dir}")
+                        except OSError as e:
+                            print(f"[WARN] 删除历史文件失败 {user_dir}: {e}")
 
-        print(f"\n[DONE] 已删除 {deleted_count} 个用户，保留 admin@admin.com 和 test@test.com")
+                    await db.delete(user)
+                    deleted_count += 1
+                    print(f"[DELETE] 已删除用户: {user.email} (ID={user.id})")
 
-    await engine.dispose()
+            await db.commit()
+
+            print(f"\n[DONE] 已删除 {deleted_count} 个用户，保留 admin@admin.com 和 test@test.com")
+
+    except Exception as e:
+        print(f"[ERROR] 清理脚本执行失败: {e}")
+        raise
+    finally:
+        await engine.dispose()
 
 
 if __name__ == "__main__":

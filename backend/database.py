@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
+from config import IS_PROD
+
 # K11: 使用 __file__ 计算绝对路径，避免依赖 CWD
 _DB_PATH = Path(__file__).resolve().parent.parent / "data" / "app.db"
 DEFAULT_DB_URL = f"sqlite+aiosqlite:///{_DB_PATH}"
@@ -54,13 +56,12 @@ async def init_db() -> None:
     os.makedirs("data", exist_ok=True)
 
     # K9: 生产环境使用默认密码时输出严重警告
-    is_prod = os.environ.get("ENV", "production").lower() not in ("dev", "development")
     for seed in SEED_USERS:
         env_key = f"SEED_{seed['username'].upper()}_PASSWORD"
         if os.environ.get(env_key) is None:
             # N5: 直接使用 email 查找对应种子用户的环境变量（避免 username → env_key 映射错误）
             if seed['email'] == 'admin@admin.com' and not os.environ.get('SEED_ADMIN_PASSWORD'):
-                if is_prod:
+                if IS_PROD:
                     logger.critical(
                         "【严重安全警告】生产环境中内置管理员用户 %s 使用默认密码！"
                         "请立即设置 SEED_ADMIN_PASSWORD 环境变量后重启服务。",
@@ -69,7 +70,7 @@ async def init_db() -> None:
                 else:
                     logger.warning(f"内置用户 {seed['email']} 使用默认密码！生产环境请设置 SEED_ADMIN_PASSWORD 环境变量")
             elif seed['email'] == 'test@test.com' and not os.environ.get('SEED_TEST_PASSWORD'):
-                if is_prod:
+                if IS_PROD:
                     logger.critical(
                         "【严重安全警告】生产环境中内置测试用户 %s 使用默认密码！"
                         "请立即设置 SEED_TEST_PASSWORD 环境变量后重启服务。",
@@ -80,6 +81,9 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # P0-7: 启用外键约束（SQLite 默认关闭），确保级联删除生效
+        await conn.execute(sa.text("PRAGMA foreign_keys = ON"))
 
         # K10: 先检查列是否存在，避免无意义的 ALTER TABLE 错误
         try:

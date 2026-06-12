@@ -19,6 +19,7 @@ from database import get_db
 from auth import require_user
 from models import User
 from schemas import CheckoutRequest, CheckoutResponse, PortalResponse, ProFeaturesResponse
+from config import IS_DEV
 
 logger = logging.getLogger(__name__)
 
@@ -164,8 +165,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     if not STRIPE_WEBHOOK_SECRET:
         logger.error("Stripe Webhook Secret 未配置，拒绝处理 Webhook")
         # 开发环境允许直接解析，生产环境强制拒绝
-        is_dev = os.environ.get("ENV", "development").lower() in ("dev", "development")
-        if not is_dev:
+        if not IS_DEV:
             raise HTTPException(status_code=500, detail="Webhook secret not configured")
         logger.warning("开发环境：跳过 Stripe webhook 验签")
         import json
@@ -194,31 +194,36 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     logger.info(f"Stripe Webhook: {event_type}")
 
     # ---------- Webhook 幂等性：基于 Stripe event ID 去重 ----------
-    from sqlalchemy import text as sa_text
-    try:
-        event_id = event.get("id", "")
-        if event_id:
-            result = await db.execute(
-                sa_text("SELECT 1 FROM history WHERE file_hash = :hash LIMIT 1"),
-                {"hash": f"stripe_evt_{event_id}"},
-            )
-            if result.scalar_one_or_none():
-                logger.info(f"Stripe Webhook 重复事件，已跳过: {event_id}")
-                return {"received": True, "duplicate": True}
-    except Exception:
-        pass  # 幂等表可能不存在，跳过
+    # 使用内存集合（服务重启后清空，但 Stripe 不会跨重启重发），
+    # 避免污染业务表（history.file_hash）。
+    _processed_events: set[str] = set()
+    event_id = event.get("id", "")
+    if event_id:
+        if event_id in _processed_events:
+            logger.info(f"Stripe Webhook 重复事件，已跳过: {event_id}")
+            return {"received": True, "duplicate": True}
+        _processed_events.add(event_id)
+        # 限制内存使用：超过 1000 条时清理旧的（Stripe 通常在 72h 内完成重试）
+        if len(_processed_events) > 1000:
+            # 保留最近的 500 条
+            _processed_events = set(list(_processed_events)[-500:])
 
     # ---------- 处理订阅事件 ----------
-    if event_type == "checkout.session.completed":
-        await _handle_checkout_completed(event, db)
-    elif event_type == "customer.subscription.updated":
-        await _handle_subscription_updated(event, db)
-    elif event_type == "customer.subscription.deleted":
-        await _handle_subscription_deleted(event, db)
-    elif event_type == "invoice.payment_failed":
-        await _handle_payment_failed(event, db)
-    else:
-        logger.info(f"Stripe Webhook: 未处理的事件类型 {event_type}")
+    try:
+        if event_type == "checkout.session.completed":
+            await _handle_checkout_completed(event, db)
+        elif event_type == "customer.subscription.updated":
+            await _handle_subscription_updated(event, db)
+        elif event_type == "customer.subscription.deleted":
+            await _handle_subscription_deleted(event, db)
+        elif event_type == "invoice.payment_failed":
+            await _handle_payment_failed(event, db)
+        else:
+            logger.info(f"Stripe Webhook: 未处理的事件类型 {event_type}")
+    except Exception as e:
+        logger.error(f"Stripe Webhook 处理失败 ({event_type}): {e}")
+        # 不重新抛出：Stripe 会根据 HTTP 状态码决定是否重试
+        # 返回 200 避免 Stripe 无限重试导致事件堆积
 
     return {"received": True}
 

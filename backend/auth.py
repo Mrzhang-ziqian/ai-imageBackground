@@ -14,9 +14,9 @@ from database import get_db
 from models import User
 from utils import hash_password, verify_password
 from schemas import UserRegister, UserLogin, UserResponse, TokenResponse
+from config import IS_PROD
 
 # ---------- Config ----------
-IS_PROD = os.environ.get("ENV", "production").lower() not in ("dev", "development")
 SECRET_KEY = os.environ.get("JWT_SECRET", "")
 if not SECRET_KEY:
     if IS_PROD:
